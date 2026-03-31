@@ -1,0 +1,21 @@
+[Unit]
+Description=SGK WordWrap — automatic keyboard layout switcher
+Documentation=https://github.com/sgk-dev/wordwrap
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/sgk-wordwrap
+Restart=on-failure
+RestartSec=3s
+# Inherit the user's display environment
+Environment=DISPLAY=:0
+PassEnvironment=WAYLAND_DISPLAY XDG_SESSION_TYPE DBUS_SESSION_BUS_ADDRESS
+
+# Resource limits — keep the daemon lightweight
+MemoryMax=128M
+CPUQuota=10%
+
+[Install]
+WantedBy=default.target

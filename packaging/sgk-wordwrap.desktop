@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=SGK WordWrap
+GenericName=Keyboard Layout Switcher
+Comment=Automatic keyboard layout text conversion
+Exec=sgk-wordwrap
+Icon=input-keyboard
+Categories=Utility;Accessibility;
+Keywords=keyboard;layout;switch;russian;ukrainian;
+NoDisplay=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3

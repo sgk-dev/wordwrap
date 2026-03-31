@@ -1,0 +1,16 @@
+# udev rules for sgk-wordwrap (Wayland evdev backend)
+#
+# This allows members of the 'input' group to read keyboard input devices
+# and create virtual input devices via uinput.
+#
+# Installation:
+#   sudo cp packaging/99-sgk-uinput.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   sudo usermod -aG input $USER
+#   # Log out and back in for group change to take effect
+
+# Allow input group to read all input event devices
+SUBSYSTEM=="input", GROUP="input", MODE="0660"
+
+# Allow input group to create virtual input devices via uinput
+KERNEL=="uinput", GROUP="input", MODE="0660"

@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sgk-wordwrap"
+version = "0.1.0"
+description = "Automatic keyboard layout switcher for Linux (X11 & Wayland)"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "SGK", email = "sidash.seo@gmail.com"}]
+requires-python = ">=3.10"
+keywords = ["keyboard", "layout", "xkb", "linux", "x11", "wayland", "input"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: X11 Applications",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "python-xlib>=0.33",
+    "evdev>=1.6.0",
+    "PyQt6>=6.4.0",
+]
+
+[project.optional-dependencies]
+atspi = ["pyatspi>=2.38"]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-qt>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+sgk-wordwrap = "sgk_wordwrap.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/sgk-dev/wordwrap"
+Repository = "https://github.com/sgk-dev/wordwrap"
+"Bug Tracker" = "https://github.com/sgk-dev/wordwrap/issues"
+
+[tool.setuptools.packages.find]
+include = ["sgk_wordwrap*"]
+
+[tool.setuptools.package-data]
+"sgk_wordwrap.layouts" = ["data/*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
