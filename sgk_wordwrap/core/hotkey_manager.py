@@ -80,6 +80,17 @@ class SgkHotkeyManager:
     def sgk_is_paused(self) -> bool:
         return self._paused
 
+    def sgk_get_last_word(self) -> str | None:
+        """Get the typed word from the backend buffer (Wayland/evdev only)."""
+        if hasattr(self._backend, "sgk_get_last_word"):
+            return self._backend.sgk_get_last_word()  # type: ignore
+        return None
+
+    def sgk_clear_buffer(self) -> None:
+        """Clear the backend's key buffer."""
+        if hasattr(self._backend, "sgk_clear_buffer"):
+            self._backend.sgk_clear_buffer()  # type: ignore
+
     def _sgk_on_hotkey_raw(self) -> None:
         """Called from background thread — debounce and forward to event loop."""
         with self._lock:

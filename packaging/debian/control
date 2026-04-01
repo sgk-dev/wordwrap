@@ -1,0 +1,15 @@
+Source: sgk-wordwrap
+Section: utils
+Priority: optional
+Maintainer: SGK <sidash.seo@gmail.com>
+Build-Depends: debhelper-compat (= 13), python3-all, python3-setuptools
+Standards-Version: 4.6.2
+Homepage: https://github.com/sgk-dev/wordwrap
+
+Package: sgk-wordwrap
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, xkb-switch, xclip, xdotool, wl-clipboard, python3-pyqt6, python3-xlib, python3-evdev
+Description: Automatic keyboard layout switcher for Linux (X11 & Wayland)
+ sgk-wordwrap is a performant and secure tool for correcting text
+ typed in the wrong keyboard layout. It supports both X11 and Wayland
+ using a combination of clipboard and low-level evdev events.

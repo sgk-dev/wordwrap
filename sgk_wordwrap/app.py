@@ -76,21 +76,18 @@ class SgkApp:
             action_delay_ms=behavior.get("action_delay_ms", 50)
         )
 
+        hotkey_str = cfg.get("hotkeys", {}).get("convert", "ctrl+shift+z")
+        self._hotkey_manager = SgkHotkeyManager(hotkey_str)
+
         processor = SgkTextProcessor(
             clipboard=clipboard,
             layout_manager=layout_manager,
             mapper=mapper,
             detector=detector,
+            hotkey_manager=self._hotkey_manager,
             max_text_length=behavior.get("max_text_length", 10000),
             fallback_to_word=behavior.get("fallback_to_word_on_no_selection", True),
         )
-
-        hotkey_str = cfg.get("hotkeys", {}).get("convert", "ctrl+shift+z")
-        self._hotkey_manager = SgkHotkeyManager(hotkey_str)
-
-        # Start GUI in separate thread
-        if not self._no_gui:
-            self._sgk_start_gui(cfg, layout_manager)
 
         # Set up asyncio loop
         self._loop = asyncio.new_event_loop()
@@ -103,17 +100,36 @@ class SgkApp:
         self._hotkey_manager.sgk_set_handler(_schedule_process)
         self._hotkey_manager.sgk_start(self._loop)
 
+        # Start asyncio loop in a separate thread
+        self._async_thread = threading.Thread(
+            target=self._loop.run_forever, name="sgk-asyncio", daemon=True
+        )
+        self._async_thread.start()
+
         _logger.info(
             "sgk_app_ready",
             extra={"hotkey": hotkey_str, "no_gui": self._no_gui},
         )
 
-        try:
-            self._loop.run_forever()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            self.sgk_stop()
+        # Start GUI (blocks the main thread)
+        if not self._no_gui:
+            self._sgk_start_gui(cfg, layout_manager)
+            if self._qt_app:
+                try:
+                    sys.exit(self._qt_app.exec())
+                except SystemExit:
+                    pass
+                finally:
+                    self.sgk_stop()
+        else:
+            # Headless mode: wait until stop
+            try:
+                while self._async_thread.is_alive():
+                    self._async_thread.join(1.0)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                self.sgk_stop()
 
     def sgk_stop(self) -> None:
         """Graceful shutdown: stop listener, close loop, destroy tray."""

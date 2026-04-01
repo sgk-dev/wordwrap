@@ -18,6 +18,18 @@ from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
 
+# Normalize layout names returned by the OS to the canonical names used in map files
+_SGK_LAYOUT_ALIASES: dict[str, str] = {
+    "us": "en",
+    "gb": "en",
+    "ua": "uk",
+}
+
+
+def _sgk_normalize(layout: str) -> str:
+    return _SGK_LAYOUT_ALIASES.get(layout.lower(), layout.lower())
+
+
 
 class _SgkLayoutBackend(Protocol):
     def get_current(self) -> str: ...
@@ -196,14 +208,14 @@ class SgkLayoutManager:
 
     def sgk_get_current_layout(self) -> str:
         try:
-            return self._backend.get_current()
+            return _sgk_normalize(self._backend.get_current())
         except Exception as exc:
             _logger.warning("sgk_get_layout_failed", extra={"error": str(exc)})
             return "en"
 
     def sgk_get_active_layouts(self) -> list[str]:
         try:
-            return self._backend.get_all()
+            return [_sgk_normalize(l) for l in self._backend.get_all()]
         except Exception as exc:
             _logger.warning("sgk_get_layouts_failed", extra={"error": str(exc)})
             return ["en", "ru"]

@@ -82,7 +82,7 @@ class SgkLayoutMapper:
         )
         _logger.debug(
             "sgk_map_loaded",
-            extra={"name": layout_map.name, "file": str(path)},
+            extra={"map_name": layout_map.name, "file": str(path)},
         )
 
     def sgk_convert(self, text: str, from_layout: str, to_layout: str) -> str:

@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import time
 
+from sgk_wordwrap.core.hotkey_manager import SgkHotkeyManager
 from sgk_wordwrap.core.layout_manager import SgkLayoutManager
 from sgk_wordwrap.input.clipboard import SgkClipboard
 from sgk_wordwrap.layouts.detector import SgkFieldDetector
@@ -36,6 +37,7 @@ class SgkTextProcessor:
         layout_manager: SgkLayoutManager,
         mapper: SgkLayoutMapper,
         detector: SgkFieldDetector,
+        hotkey_manager: SgkHotkeyManager | None = None,
         max_text_length: int = 10000,
         fallback_to_word: bool = True,
     ) -> None:
@@ -43,6 +45,7 @@ class SgkTextProcessor:
         self._layout_manager = layout_manager
         self._mapper = mapper
         self._detector = detector
+        self._hotkey_manager = hotkey_manager
         self._max_length = max_text_length
         self._fallback_to_word = fallback_to_word
 
@@ -50,6 +53,8 @@ class SgkTextProcessor:
         """Entry point — called when hotkey fires."""
         t_start = time.monotonic()
         try:
+            # Short sleep to allow user to release physical keys (avoid modifier pollution)
+            await asyncio.sleep(0.15)
             await self._sgk_do_process()
         except Exception as exc:
             _logger.error("sgk_process_unexpected_error", extra={"error": str(exc)})
@@ -106,14 +111,8 @@ class SgkTextProcessor:
             await self._sgk_restore(saved_clipboard)
             return
 
-        # 5. Replace text: set clipboard → Ctrl+V
-        ok = await self._clipboard.sgk_set(converted)
-        if not ok:
-            _logger.warning("sgk_clipboard_write_failed")
-            await self._sgk_restore(saved_clipboard)
-            return
-
-        await self._clipboard.sgk_send_key("ctrl+v")
+        # 5. Replace text: type converted text (replaces active selection)
+        await self._sgk_replace_text(converted)
 
         # 6. Switch layout
         self._layout_manager.sgk_switch_to_next()
@@ -124,7 +123,7 @@ class SgkTextProcessor:
         _logger.info(
             "sgk_convert",
             extra={
-                "process": process_name or "unknown",
+                "app": process_name or "unknown",
                 "window_class": window_class or "unknown",
                 "layout_before": layout_before,
                 "layout_after": layout_after,
@@ -133,30 +132,57 @@ class SgkTextProcessor:
         )
 
     async def _sgk_acquire_text(self, saved_clipboard: str | None) -> str | None:
-        """Attempt Scenario A (selection), fall back to Scenario B (word)."""
-        # --- Scenario A: try to get selected text via Ctrl+C ---
-        await self._clipboard.sgk_send_key("ctrl+c")
-        # Give app time to copy
-        await asyncio.sleep(0.1)
-        new_clipboard = await self._clipboard.sgk_get()
+        """Attempt Scenario A (selection), fall back to Scenario B (word).
 
-        if new_clipboard and new_clipboard != saved_clipboard and new_clipboard.strip():
-            return new_clipboard
+        Wayland: read PRIMARY selection directly — no Ctrl+C needed.
+        X11: PRIMARY selection is also used (mouse-selected text).
+        """
+        # --- Scenario A: get selected text ---
+        # Try PRIMARY first (common for Linux)
+        selected = await self._clipboard.sgk_get_primary()
+        if selected and selected.strip():
+            _logger.debug("sgk_acquired_via_primary", extra={"len": len(selected)})
+            return selected
 
-        # --- Scenario B: no selection — select last word ---
+        # If PRIMARY is empty, try Scenario B: no selection — recover last word
         if not self._fallback_to_word:
             return None
 
-        await self._clipboard.sgk_send_key("ctrl+shift+Left")
-        await asyncio.sleep(0.08)
-        await self._clipboard.sgk_send_key("ctrl+c")
-        await asyncio.sleep(0.1)
+        # 1. Try buffer-based recovery (from evdev listener)
+        if self._hotkey_manager:
+            word = self._hotkey_manager.sgk_get_last_word()
+            if word:
+                _logger.debug("sgk_acquired_via_buffer", extra={"word": word})
+                # If we use buffer recovery, we MUST backspace over the typed word
+                for _ in range(len(word)):
+                    await self._clipboard.sgk_send_key("backspace")
+                    await asyncio.sleep(0.01)
+                
+                # We also need to clear the buffer so it's not reused
+                self._hotkey_manager.sgk_clear_buffer()
+                return word
 
-        word_clipboard = await self._clipboard.sgk_get()
-        if word_clipboard and word_clipboard != saved_clipboard and word_clipboard.strip():
-            return word_clipboard
+        _logger.debug("sgk_falling_back_to_word_selection")
+        # 2. Last resort: Select word (Ctrl+Shift+Left)
+        await self._clipboard.sgk_send_key("ctrl+shift+Left")
+        await asyncio.sleep(0.2)  # Wait for selection to happen
+
+        # 3. Read what was just selected (should now be in PRIMARY)
+        word = await self._clipboard.sgk_get_primary()
+        if word and word.strip():
+            _logger.debug("sgk_acquired_via_word_selection", extra={"len": len(word)})
+            return word
 
         return None
+
+    async def _sgk_replace_text(self, converted: str) -> None:
+        """Type the converted text, replacing any active selection.
+
+        Delay lets the hotkey keys physically release before injection,
+        so modifiers (Ctrl, Alt) don't interfere with the typed text.
+        """
+        await asyncio.sleep(0.25)
+        await self._clipboard.sgk_type_text(converted)
 
     async def _sgk_restore(self, saved: str | None) -> None:
         """Restore clipboard to saved state."""

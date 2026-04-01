@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_install:
+	dh_auto_install
+	# Install systemd service and desktop files if they exist in packaging/
+	mkdir -p debian/sgk-wordwrap/usr/lib/systemd/user
+	cp packaging/sgk-wordwrap.service debian/sgk-wordwrap/usr/lib/systemd/user/
+	mkdir -p debian/sgk-wordwrap/usr/share/applications
+	cp packaging/sgk-wordwrap.desktop debian/sgk-wordwrap/usr/share/applications/
+	mkdir -p debian/sgk-wordwrap/lib/udev/rules.d
+	cp packaging/99-sgk-uinput.rules debian/sgk-wordwrap/lib/udev/rules.d/

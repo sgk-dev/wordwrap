@@ -113,30 +113,44 @@ class SgkFieldDetector:
     def sgk_get_active_window_info(self) -> tuple[str | None, str | None, str | None]:
         """Return (process_name, window_class, window_title) for the focused window.
 
-        Uses xdotool on X11; returns (None, None, None) on failure.
+        Uses xdotool on X11; uses DBus on Wayland (GNOME/KDE).
         """
+        # Try X11 first (most reliable if xdotool is present and display is X11)
+        if self._sgk_is_x11():
+            info = self._sgk_get_info_x11()
+            if info[1]: # if window_class is found
+                return info
+
+        # Fallback to Wayland/DBus
+        return self._sgk_get_info_wayland()
+
+    def _sgk_is_x11(self) -> bool:
+        from sgk_wordwrap.utils.display_server import sgk_detect_display_server
+        return sgk_detect_display_server() == "x11"
+
+    def _sgk_get_info_x11(self) -> tuple[str | None, str | None, str | None]:
         try:
             win_id = subprocess.check_output(
                 ["xdotool", "getactivewindow"],
-                timeout=0.5,
+                timeout=0.2,
                 stderr=subprocess.DEVNULL,
             ).decode().strip()
 
             name_out = subprocess.check_output(
                 ["xdotool", "getwindowclassname", win_id],
-                timeout=0.5,
+                timeout=0.2,
                 stderr=subprocess.DEVNULL,
             ).decode().strip()
 
             title_out = subprocess.check_output(
                 ["xdotool", "getwindowname", win_id],
-                timeout=0.5,
+                timeout=0.2,
                 stderr=subprocess.DEVNULL,
             ).decode().strip()
 
             pid_out = subprocess.check_output(
                 ["xdotool", "getwindowpid", win_id],
-                timeout=0.5,
+                timeout=0.2,
                 stderr=subprocess.DEVNULL,
             ).decode().strip()
 
@@ -149,6 +163,23 @@ class SgkFieldDetector:
                     pass
 
             return process_name, name_out or None, title_out or None
-
-        except (subprocess.SubprocessError, FileNotFoundError, ValueError):
+        except Exception:
             return None, None, None
+
+    def _sgk_get_info_wayland(self) -> tuple[str | None, str | None, str | None]:
+        """Attempt to get info via DBus for GNOME or KDE."""
+        # KDE Plasma
+        try:
+            # qdbus org.kde.KWin /KWin activeWindow
+            out = subprocess.check_output(
+                ["qdbus", "org.kde.KWin", "/KWin", "activeWindow"],
+                timeout=0.2, stderr=subprocess.DEVNULL
+            ).decode().strip()
+            # This is just an ID. Getting more info requires more calls.
+            # For simplicity, we might just use AT-SPI which is better.
+        except Exception:
+            pass
+
+        # If we reach here, we rely on AT-SPI for password fields,
+        # but window-based blacklisting might be limited on Wayland without specific extensions.
+        return None, None, None

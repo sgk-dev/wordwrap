@@ -1,0 +1,7 @@
+sgk-wordwrap (0.1.0) unstable; urgency=low
+
+  * Initial release.
+  * Added Wayland support via evdev and uinput.
+  * Added SGK-branded UI and logic.
+
+ -- SGK <sidash.seo@gmail.com>  Wed, 01 Apr 2026 12:00:00 +0300
