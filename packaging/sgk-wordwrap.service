@@ -3,6 +3,8 @@ Description=SGK WordWrap — automatic keyboard layout switcher
 Documentation=https://github.com/sgk-dev/wordwrap
 After=graphical-session.target
 PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
