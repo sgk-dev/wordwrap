@@ -87,6 +87,16 @@ the icon to launch it.
 Requires: `wl-clipboard`, `python3-pyqt6`, `python3-evdev`, and membership in the
 `input` group (for the evdev listener and the uinput virtual keyboard).
 
+## Launch from the applications menu
+
+If you run from source and just want the clickable icon (no systemd service):
+
+```bash
+python -m sgk_wordwrap --install-desktop
+```
+
+Then open the GNOME activities overview and search for **WordWrap**.
+
 ## Run in the foreground
 
 ```bash
