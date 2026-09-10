@@ -121,6 +121,12 @@ def main() -> None:
         _sgk_install_service()
         sys.exit(0)
 
+    from sgk_wordwrap.utils.single_instance import sgk_acquire_single_instance
+
+    if not sgk_acquire_single_instance():
+        print("WordWrap is already running.")
+        sys.exit(0)
+
     from sgk_wordwrap.app import SgkApp
 
     app = SgkApp(log_level_override=args.log_level, no_gui=args.no_gui)
