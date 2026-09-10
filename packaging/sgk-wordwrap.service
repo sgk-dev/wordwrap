@@ -11,13 +11,15 @@ Type=simple
 ExecStart=%h/.local/bin/sgk-wordwrap
 Restart=on-failure
 RestartSec=3s
-# Inherit the user's display environment
+# Session environment. install.sh also runs `systemctl --user import-environment`
+# so WAYLAND_DISPLAY / DBUS_SESSION_BUS_ADDRESS are populated for the unit.
+Environment=PYTHONUNBUFFERED=1
 Environment=DISPLAY=:0
-PassEnvironment=WAYLAND_DISPLAY XDG_SESSION_TYPE DBUS_SESSION_BUS_ADDRESS
+PassEnvironment=WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DBUS_SESSION_BUS_ADDRESS
 
 # Resource limits — keep the daemon lightweight
 MemoryMax=128M
 CPUQuota=10%
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
