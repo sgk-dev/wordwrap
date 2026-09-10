@@ -47,6 +47,23 @@ def _sgk_panel_fg():
     return QColor("#f5f5f5")
 
 
+def _sgk_about_colors():
+    """(*background*, *text*, *muted*) for the About dialog.
+
+    Both background and text are chosen from the same light/dark decision so
+    they always contrast, even when the desktop hands Qt an inconsistent
+    palette (dark window colour but dark default text, a known GNOME/Qt6 bug).
+    """
+    from PyQt6.QtGui import QColor, QPalette
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    win = app.palette().color(QPalette.ColorRole.Window) if app is not None else QColor("#2b2b2b")
+    if win.lightnessF() < 0.5:
+        return QColor("#2b2b2b"), QColor("#f5f5f5"), QColor("#b3b3b3")
+    return QColor("#f7f7f7"), QColor("#1e1e1e"), QColor("#6a6a6a")
+
+
 def _sgk_make_icon(paused: bool, style: str = "color"):
     """Return the tray QIcon for the given state and style. Falls back to a dot."""
     from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -281,6 +298,16 @@ class SgkTrayIcon:
             dlg.setWindowTitle(sgk_tr("about.title", lang))
             dlg.setMinimumWidth(360)
 
+            bg, fg, muted = _sgk_about_colors()
+            dlg.setStyleSheet(
+                f"QDialog {{ background-color: {bg.name()}; }}"
+                f"QLabel {{ color: {fg.name()}; background: transparent; }}"
+                f"QPushButton {{ color: {fg.name()}; background-color: {bg.name()}; "
+                f"border: 1px solid {muted.name()}; border-radius: 4px; "
+                f"padding: 4px 12px; }}"
+                f"QPushButton:hover {{ border-color: {fg.name()}; }}"
+            )
+
             layout = QVBoxLayout(dlg)
             layout.setSpacing(6)
             layout.setContentsMargins(24, 20, 24, 16)
@@ -298,7 +325,7 @@ class SgkTrayIcon:
                 layout.addWidget(logo)
 
             title = QLabel("<b>WordWrap</b>")
-            title.setStyleSheet("font-size: 16px;")
+            title.setStyleSheet(f"font-size: 16px; color: {fg.name()};")
             title.setAlignment(center)
             layout.addWidget(title)
 
@@ -313,13 +340,13 @@ class SgkTrayIcon:
                 f"{sgk_tr('about.license', lang)}: GPL-3.0-or-later"
             )
             meta.setAlignment(center)
-            meta.setStyleSheet("color: palette(mid);")
+            meta.setStyleSheet(f"color: {muted.name()};")
             layout.addWidget(meta)
 
             thanks = QLabel(sgk_tr("about.thanks", lang))
             thanks.setWordWrap(True)
             thanks.setAlignment(center)
-            thanks.setStyleSheet("color: palette(mid);")
+            thanks.setStyleSheet(f"color: {muted.name()};")
             layout.addWidget(thanks)
 
             layout.addSpacing(4)
@@ -339,7 +366,7 @@ class SgkTrayIcon:
 
             signature = QLabel("Developed by SGK with ❤️")
             signature.setAlignment(center)
-            signature.setStyleSheet("color: palette(mid);")
+            signature.setStyleSheet(f"color: {muted.name()};")
             layout.addWidget(signature)
 
             buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
