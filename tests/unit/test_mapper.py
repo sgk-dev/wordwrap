@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
-import pytest
 from pathlib import Path
+
+import pytest
+
 from sgk_wordwrap.layouts.mapper import SgkLayoutMapper
 
 
