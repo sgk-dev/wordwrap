@@ -52,6 +52,14 @@ class TestDefaults:
         assert data["ui"]["language"] == "en"
         assert data["ui"]["tray_icon_style"] == "color"
 
+    def test_default_last_word_hotkey(self, config: SgkConfig) -> None:
+        data = config.sgk_load()
+        assert data["hotkeys"]["convert_last_word"] == "ctrl+f2"
+
+    def test_default_terminal_paste_combo(self, config: SgkConfig) -> None:
+        data = config.sgk_load()
+        assert data["behavior"]["terminal_paste_combo"] == "ctrl+shift+v"
+
 
 class TestLoadSave:
     def test_creates_file_on_first_load(

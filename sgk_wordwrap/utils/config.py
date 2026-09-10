@@ -22,6 +22,7 @@ _SGK_DEFAULT_CONFIG: dict[str, Any] = {
     "hotkeys": {
         "convert": "ctrl+f1",
         "convert_terminal": "ctrl+shift+f1",
+        "convert_last_word": "ctrl+f2",
         "toggle": "ctrl+pause",
     },
     "layouts": {
@@ -63,7 +64,10 @@ _SGK_DEFAULT_CONFIG: dict[str, Any] = {
         "paste_settle_ms": 80,
         "copy_settle_ms": 120,
         "hotkey_settle_ms": 150,
+        "layout_settle_ms": 60,
         "max_text_length": 10000,
+        "terminal_paste_combo": "ctrl+shift+v",
+        "terminal_max_backspaces": 200,
     },
     "logging": {
         "level": "INFO",

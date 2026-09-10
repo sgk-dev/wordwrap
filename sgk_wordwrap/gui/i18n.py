@@ -39,9 +39,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     # ---- settings dialog ----
     "cfg.title": {"en": "WordWrap - Settings", "ru": "WordWrap - Настройки"},
+    "cfg.ok": {"en": "OK", "ru": "ОК"},
+    "cfg.cancel": {"en": "Cancel", "ru": "Отмена"},
     "cfg.tab.general": {"en": "General", "ru": "Основное"},
     "cfg.tab.hotkeys": {"en": "Hotkeys", "ru": "Горячие клавиши"},
-    "cfg.tab.blacklist": {"en": "Blacklist", "ru": "Чёрный список"},
+    "cfg.tab.blacklist": {"en": "Excluded apps", "ru": "Программы-исключения"},
     "cfg.tab.behavior": {"en": "Behavior", "ru": "Поведение"},
     "cfg.language": {"en": "Interface language:", "ru": "Язык интерфейса:"},
     "cfg.autostart": {"en": "Launch on login:", "ru": "Запускать при входе:"},
@@ -51,19 +53,27 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Convert (terminal):",
         "ru": "Конверсия (терминал):",
     },
+    "cfg.hotkey.convert_last_word": {
+        "en": "Convert last word:",
+        "ru": "Конверсия последнего слова:",
+    },
     "cfg.hotkey.toggle": {"en": "Enable / disable:", "ru": "Включить / выключить:"},
     "cfg.hotkey.note": {
         "en": "Hotkey changes apply after restart.",
         "ru": "Изменения горячих клавиш применяются после перезапуска.",
     },
-    "cfg.bl.processes": {"en": "Blocked processes", "ru": "Заблокированные процессы"},
+    "cfg.bl.explain": {
+        "en": "Conversion is disabled in these programs (for example, password managers).",
+        "ru": "В этих программах конверсия отключена (например, менеджеры паролей).",
+    },
+    "cfg.bl.processes": {"en": "Program names", "ru": "Имена программ"},
     "cfg.bl.hint": {
-        "en": "One process name per row (e.g. keepassxc).",
-        "ru": "По одному имени процесса в строке (напр. keepassxc).",
+        "en": "One program (process) name per row, e.g. keepassxc.",
+        "ru": "По одному имени программы (процесса) в строке, напр. keepassxc.",
     },
     "cfg.bl.add": {"en": "Add", "ru": "Добавить"},
     "cfg.bl.remove": {"en": "Remove", "ru": "Удалить"},
-    "cfg.bl.placeholder": {"en": "Add process name...", "ru": "Имя процесса..."},
+    "cfg.bl.placeholder": {"en": "Program name...", "ru": "Имя программы..."},
     "cfg.beh.fallback": {
         "en": "Select last word when nothing is selected:",
         "ru": "Выделять последнее слово, если ничего не выделено:",
@@ -73,6 +83,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "Восстанавливать буфер обмена после вставки:",
     },
     "cfg.beh.delay": {"en": "Action delay:", "ru": "Задержка действий:"},
+    "cfg.beh.terminal_paste": {
+        "en": "Terminal paste shortcut:",
+        "ru": "Вставка в терминал:",
+    },
     "cfg.saved": {
         "en": "Settings saved.",
         "ru": "Настройки сохранены.",

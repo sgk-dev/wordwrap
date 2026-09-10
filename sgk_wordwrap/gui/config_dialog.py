@@ -104,9 +104,11 @@ class SgkConfigDialog:
         hk_layout = QFormLayout(hk_tab)
         convert_edit = QLineEdit(hotkeys.get("convert", "ctrl+f1"))
         terminal_edit = QLineEdit(hotkeys.get("convert_terminal", "ctrl+shift+f1"))
+        last_word_edit = QLineEdit(hotkeys.get("convert_last_word", "ctrl+f2"))
         toggle_edit = QLineEdit(hotkeys.get("toggle", "ctrl+pause"))
         hk_layout.addRow(self._tr("cfg.hotkey.convert"), convert_edit)
         hk_layout.addRow(self._tr("cfg.hotkey.convert_terminal"), terminal_edit)
+        hk_layout.addRow(self._tr("cfg.hotkey.convert_last_word"), last_word_edit)
         hk_layout.addRow(self._tr("cfg.hotkey.toggle"), toggle_edit)
         note = QLabel(self._tr("cfg.hotkey.note"))
         note.setStyleSheet("color: palette(mid);")
@@ -116,6 +118,10 @@ class SgkConfigDialog:
         # ---- Tab: Blacklist ----
         bl_tab = QWidget()
         bl_layout = QVBoxLayout(bl_tab)
+        bl_explain = QLabel(self._tr("cfg.bl.explain"))
+        bl_explain.setWordWrap(True)
+        bl_explain.setStyleSheet("color: palette(mid);")
+        bl_layout.addWidget(bl_explain)
         bl_group = QGroupBox(self._tr("cfg.bl.processes"))
         bl_group_layout = QVBoxLayout(bl_group)
         proc_list = QListWidget()
@@ -165,11 +171,23 @@ class SgkConfigDialog:
         delay_spin.setValue(behavior.get("action_delay_ms", 50))
         beh_layout.addRow(self._tr("cfg.beh.delay"), delay_spin)
 
+        term_paste_combo = QComboBox()
+        term_paste_combo.addItems(["ctrl+shift+v", "shift+insert"])
+        cur_combo = behavior.get("terminal_paste_combo", "ctrl+shift+v")
+        if term_paste_combo.findText(cur_combo) < 0:
+            term_paste_combo.addItem(cur_combo)
+        term_paste_combo.setCurrentText(cur_combo)
+        beh_layout.addRow(self._tr("cfg.beh.terminal_paste"), term_paste_combo)
+
         tabs.addTab(beh_tab, self._tr("cfg.tab.behavior"))
 
         # ---- Buttons ----
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(self._tr("cfg.ok"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(
+            self._tr("cfg.cancel")
         )
 
         def _on_accept() -> None:
@@ -183,6 +201,7 @@ class SgkConfigDialog:
             updated.setdefault("hotkeys", {}).update({
                 "convert": convert_edit.text().strip(),
                 "convert_terminal": terminal_edit.text().strip(),
+                "convert_last_word": last_word_edit.text().strip(),
                 "toggle": toggle_edit.text().strip(),
             })
             updated.setdefault("blacklist", {})["processes"] = [
@@ -192,6 +211,7 @@ class SgkConfigDialog:
                 "fallback_to_word_on_no_selection": fallback_cb.isChecked(),
                 "restore_clipboard": restore_cb.isChecked(),
                 "action_delay_ms": delay_spin.value(),
+                "terminal_paste_combo": term_paste_combo.currentText().strip(),
             })
 
             sgk_set_autostart(autostart_cb.isChecked())
