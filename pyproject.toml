@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sgk-wordwrap"
-version = "0.1.0"
-description = "Automatic keyboard layout switcher for Linux (X11 & Wayland)"
+version = "0.2.0"
+description = "Automatic keyboard layout switcher for Linux (GNOME Wayland)"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "SGK", email = "sidash.seo@gmail.com"}]
@@ -24,12 +24,12 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "python-xlib>=0.33",
     "evdev>=1.6.0",
     "PyQt6>=6.4.0",
 ]
 
 [project.optional-dependencies]
+x11 = ["python-xlib>=0.33"]
 atspi = ["pyatspi>=2.38"]
 dev = [
     "pytest>=7.0",

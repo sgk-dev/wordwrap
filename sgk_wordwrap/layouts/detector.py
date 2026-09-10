@@ -171,7 +171,7 @@ class SgkFieldDetector:
         # KDE Plasma
         try:
             # qdbus org.kde.KWin /KWin activeWindow
-            out = subprocess.check_output(
+            subprocess.check_output(
                 ["qdbus", "org.kde.KWin", "/KWin", "activeWindow"],
                 timeout=0.2, stderr=subprocess.DEVNULL
             ).decode().strip()

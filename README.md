@@ -1,100 +1,107 @@
 # sgk-wordwrap
 
-Automatic keyboard layout switcher for Linux (X11 & Wayland).
+Fix text typed in the wrong keyboard layout — the Linux answer to Punto Switcher.
 
-Press `Ctrl+Shift+Z` to convert the selected text (or last word) from the wrong keyboard layout to the correct one.
+Select the mistyped text, press **Ctrl+F1**: `ghbdtn` becomes `привет`, `руддщ`
+becomes `hello`, and the system layout switches to match.
 
-**Example:** You typed `ghbdtn` with EN layout active instead of RU → press the hotkey → text becomes `привет`, layout switches to RU.
+> **Supported environment:** GNOME on **Wayland** (Ubuntu, Mutter). Other setups
+> (X11, KDE, wlroots) are not targeted by this release.
 
-## Features
+## How it works
 
-- Works on X11 (XRecord) and Wayland (evdev)
-- GNOME and KDE Plasma support
-- EN↔RU and EN↔UK (Ukrainian) built-in mappings
-- Custom layout maps (user-defined JSON)
-- System tray with pause/resume
-- Password field protection (AT-SPI + blacklist)
-- 100% local — no telemetry, no network
-- Latency < 50ms
+1. Global hotkey caught via evdev (needs the `input` group).
+2. Selected text read from the PRIMARY selection (`wl-paste --primary`); if nothing
+   is selected, the last word is selected automatically (optional).
+3. Text converted character-by-character between layouts (`en ↔ ru` built in).
+4. Result pasted back via clipboard + synthetic **Ctrl+V** (`Ctrl+Shift+V` in
+   terminals) — `wtype` is not supported by Mutter, so this is the reliable path.
+5. System layout switched via `gsettings`.
+6. Your clipboard is saved and restored around the operation.
 
-## Quick Install (Ubuntu)
-
-```bash
-git clone https://github.com/sgk-dev/wordwrap
-cd wordwrap
-bash packaging/install.sh
-```
-
-Or just pip:
-
-```bash
-pip install sgk-wordwrap
-sgk-wordwrap --install-service
-systemctl --user enable --now sgk-wordwrap
-```
-
-## Requirements
-
-**System packages:**
-```bash
-sudo apt install xkb-switch xclip xdotool python3-pyqt6
-# Wayland only:
-sudo apt install wl-clipboard ydotool
-```
-
-**Wayland:** Add yourself to the `input` group (required for evdev):
-```bash
-sudo usermod -aG input $USER
-# Log out and back in
-```
-
-## Usage
+## Hotkeys
 
 | Action | Hotkey |
 |--------|--------|
-| Convert text | `Ctrl+Shift+Z` |
+| Convert selection | `Ctrl+F1` |
+| Convert selection (terminal — pastes with `Ctrl+Shift+V`) | `Ctrl+Shift+F1` |
+| Enable / disable conversion | `Ctrl+Pause` |
 
-Right-click the tray icon to:
-- Pause/resume
-- Open Settings (change hotkey, manage blacklist)
-- Quit
+All configurable in `~/.config/sgk-wordwrap/config.json`. The listener only
+watches the keyboard, so the hotkey also reaches the focused app — that is why the
+defaults are otherwise-unused keys.
+
+## Tray
+
+The tray icon (top panel) shows enabled/disabled. Left-click toggles it;
+right-click for the menu (enable/disable, layouts, settings, quit).
+
+## Install (GNOME Wayland / Ubuntu)
+
+```bash
+bash packaging/install.sh
+# log out and back in once (for the 'input' group), then:
+systemctl --user start sgk-wordwrap
+```
+
+Requires: `wl-clipboard`, `python3-pyqt6`, `python3-evdev`, and membership in the
+`input` group (for the evdev listener and the uinput virtual keyboard).
+
+## Run in the foreground
+
+```bash
+python -m sgk_wordwrap --log-level DEBUG      # with tray
+python -m sgk_wordwrap --no-gui               # headless
+```
 
 ## Configuration
 
-File: `~/.config/sgk-wordwrap/config.json`
+`~/.config/sgk-wordwrap/config.json` (created on first run):
 
 ```json
 {
-  "hotkeys": { "convert": "ctrl+shift+z" },
+  "hotkeys": {
+    "convert": "ctrl+f1",
+    "convert_terminal": "ctrl+shift+f1",
+    "toggle": "ctrl+pause"
+  },
   "layouts": { "active": ["en", "ru"] },
-  "blacklist": {
-    "processes": ["keepassxc", "pinentry"]
+  "behavior": {
+    "enabled_on_start": true,
+    "fallback_to_word_on_no_selection": true,
+    "clipboard_settle_ms": 80,
+    "paste_settle_ms": 80
   }
 }
 ```
 
-## Custom Layouts
+### Custom layouts
 
-Add a JSON file to `~/.config/sgk-wordwrap/layouts/`:
+Drop a JSON file into `~/.config/sgk-wordwrap/layouts/`:
 
 ```json
 {
-  "name": "en-de",
-  "from_layout": "en",
-  "to_layout": "de",
-  "description": "QWERTY → QWERTZ",
-  "map": {
-    "y": "z", "z": "y",
-    "Y": "Z", "Z": "Y"
-  }
+  "name": "en-de", "from_layout": "en", "to_layout": "de",
+  "map": { "y": "z", "z": "y", "Y": "Z", "Z": "Y" }
 }
 ```
+
+## Notes & limitations
+
+- **Direction** is "current layout → the other layout". Correct for the usual case
+  (you typed gibberish because the wrong layout was active). Pressed on correct
+  text by mistake? Undo with `Ctrl+Z` in the app — the paste is a single edit.
+- **Non-text clipboard** (image/files) is lost when restoring; only text is kept.
+- **Password fields:** window/process detection is not available on GNOME Wayland,
+  so the blacklist is best-effort only. Install `python3-pyatspi` for AT-SPI
+  password-field detection.
+- Text content is never logged (only metadata); no network access.
 
 ## Security
 
-- Text content is **never logged** (only metadata: process name, layout, char count)
-- Conversion is **skipped** in password fields (AT-SPI detection + process blacklist)
-- No network connections of any kind
+- Converted text is never logged.
+- Conversion is skipped for blacklisted processes (best-effort on Wayland).
+- No network connections of any kind.
 
 ## License
 

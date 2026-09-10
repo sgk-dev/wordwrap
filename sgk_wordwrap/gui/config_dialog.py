@@ -39,11 +39,20 @@ class SgkConfigDialog:
 
     def _sgk_build_and_exec(self) -> None:
         from PyQt6.QtWidgets import (
-            QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
-            QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton,
-            QTabWidget, QVBoxLayout, QWidget, QSpinBox, QCheckBox,
+            QCheckBox,
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QGroupBox,
+            QHBoxLayout,
+            QLineEdit,
+            QListWidget,
+            QPushButton,
+            QSpinBox,
+            QTabWidget,
+            QVBoxLayout,
+            QWidget,
         )
-        from PyQt6.QtCore import Qt
 
         dialog = QDialog()
         dialog.setWindowTitle("sgk-wordwrap Settings")

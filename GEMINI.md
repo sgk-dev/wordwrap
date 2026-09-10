@@ -1,76 +1,86 @@
 # GEMINI.md — sgk-wordwrap
 
-Этот файл содержит инструкции для Gemini CLI при работе с проектом sgk-wordwrap.
+Инструкции для Gemini CLI при работе с проектом sgk-wordwrap.
 
-## Обзор проекта
+## Что это
 
-**sgk-wordwrap** — демон на Python 3.10+, который конвертирует ошибочно набранный текст между раскладками клавиатуры (например, EN→RU, RU→EN) в Linux. Активируется настраиваемой горячей клавишей, захватывает выделенный текст (или последнее слово), перекодирует его, вставляет обратно и переключает активную раскладку.
+Демон на Python 3.10+ — «исправитель раскладки» для Linux (аналог Punto Switcher).
+Горячая клавиша → читает выделенный текст → перекодирует между раскладками →
+вставляет обратно → переключает системную раскладку.
 
-## Запуск
+**Поддерживаемая среда — только одна:** GNOME Shell на **Wayland** (Ubuntu, Mutter).
+Код для X11 / KDE / wlroots в репозитории есть, но вне области и не тестируется.
+
+## Ключевые решения (почему так)
+
+- **Вставка через буфер обмена, не печать.** `wtype` не работает на Mutter
+  («virtual keyboard protocol» не поддержан), а посимвольный ввод через uinput
+  раскладко-зависим. Поэтому: `wl-copy` → uinput `Ctrl+V` (`Ctrl+Shift+V` для
+  терминалов) → восстановление буфера.
+- **evdev-слушатель, без глобального перехвата.** На GNOME Wayland нет API
+  глобальных хоткеев для приложений. Читаем `/dev/input/event*` (нужна группа
+  `input`), событие НЕ поглощаем — хоткей уходит и в активное приложение. Поэтому
+  дефолтные клавиши безвредные: `Ctrl+F1`, `Ctrl+Shift+F1`, `Ctrl+Pause`.
+- **Раскладка через gsettings.** `xkb-switch` на Wayland падает;
+  `gsettings set org.gnome.desktop.input-sources current <idx>` — единственный
+  рабочий способ.
+- **Нет API активного окна.** `org.gnome.Shell.Introspect.GetWindows` на GNOME 46
+  запрещён; `xdotool` видит только Xwayland-окна. Поэтому детект «это терминал?»
+  и blacklist по окну невозможны — терминал вынесен в отдельный хоткей
+  (`convert_terminal`), выбор за пользователем.
+
+## Запуск и тесты
 
 ```bash
-# Запуск для разработки
-python -m sgk_wordwrap
-
-# С отладочным логированием
-python -m sgk_wordwrap --log-level DEBUG
-
-# Установка пользовательского сервиса systemd
-python -m sgk_wordwrap --install-service
-
-# Запуск тестов
-pytest tests/
-
-# Линтинг
+python -m sgk_wordwrap --log-level DEBUG    # передний план, с треем
+python -m sgk_wordwrap --no-gui             # headless
+pytest -q
 ruff check sgk_wordwrap/
+bash packaging/install.sh                   # systemd user service + автозапуск
 ```
 
-## Архитектура
+## Хоткеи (по умолчанию, настраиваются в config.json)
 
-```
-sgk_wordwrap/
-  app.py              — SgkApp: жизненный цикл (старт/стоп, обработка сигналов)
-  core/
-    hotkey_manager.py — SgkHotkeyManager: независимый от бэкенда слушатель клавиш
-    text_processor.py — SgkTextProcessor: основной процесс конвертации (сценарии A и B)
-    layout_manager.py — SgkLayoutManager: xkb-switch / gsettings / D-Bus
-  input/
-    base.py           — SgkInputBackend ABC
-    x11_backend.py    — слушатель глобальных клавиш на базе XRecord (X11)
-    evdev_backend.py  — слушатель на базе evdev (Wayland, нужна группа input)
-    clipboard.py      — SgkClipboard: чтение/запись/восстановление + симуляция клавиш
-  layouts/
-    mapper.py         — SgkLayoutMapper: конвертация символов
-    detector.py       — SgkFieldDetector: обнаружение полей паролей/только для чтения
-    data/             — JSON файлы маппинга (en_ru.json, en_uk.json)
-  gui/
-    tray.py           — SgkTrayIcon: иконка в трее на PyQt6
-    config_dialog.py  — SgkConfigDialog: окно настроек
-  utils/
-    config.py         — SgkConfig: загрузка/сохранение ~/.config/sgk-wordwrap/config.json
-    logger.py         — sgk_get_logger(): структурированное логирование в JSON
-    display_server.py — sgk_detect_display_server(): x11 | wayland
-```
+| Действие | Клавиша |
+|----------|---------|
+| Конверсия выделения | `Ctrl+F1` |
+| Конверсия (терминал, вставка `Ctrl+Shift+V`) | `Ctrl+Shift+F1` |
+| Вкл / выкл конверсии | `Ctrl+Pause` |
 
-## Конвенции кода
+## Поток (`text_processor.sgk_process(terminal)`)
 
-- **Префикс:** `sgk_` для всех публичных методов, классы именуются `Sgk*`.
-- **Никаких `print()`** — используйте `_logger = sgk_get_logger(__name__)`.
-- **Никаких сетевых вызовов** — 100% локальная работа.
-- **Никогда не логировать содержимое текста** — только метаданные (процесс, раскладка, количество символов).
-- **Async:** цикл событий asyncio; слушатель горячих клавиш в отдельном потоке → `loop.call_soon_threadsafe`.
-- **Путь конфига:** `~/.config/sgk-wordwrap/config.json`
-- **Путь логов:** `~/.local/share/sgk-wordwrap/wordwrap.log`
+1. Проверка «чувствительного» контекста → пропуск.
+2. Сохранить буфер обмена.
+3. Взять текст: PRIMARY; иначе (если fallback) `Ctrl+Shift+Left` → PRIMARY.
+4. Проверка безопасности текста.
+5. Направление = текущая раскладка → `sgk_get_next_layout()`; нужна карта.
+6. Конверсия; если без изменений — восстановить буфер и выйти.
+7. `clipboard.sgk_type_text(converted, terminal=...)` — копирование + вставка.
+8. `layout_manager.sgk_switch_to(target)`.
+9. Восстановить буфер обмена.
 
-## Зависимости
+## Конвенции
 
-Системные пакеты (apt): `xkb-switch`, `xclip`, `xdotool`, `wl-clipboard`, `ydotool`.
-Python пакеты: `python-xlib`, `evdev`, `PyQt6`.
+- Префикс `sgk_` на публичных методах, классы `Sgk*`. Никаких `print()` —
+  `sgk_get_logger`.
+- Никогда не логировать содержимое текста — только метаданные.
+- Никаких сетевых вызовов.
+- Любое исключение в потоке логируется, демон не падает.
 
-## Заметки по Wayland
+## Ловушки / известные ошибки
 
-Бэкенд evdev требует добавления пользователя в группу `input`:
-```bash
-sudo usermod -aG input $USER  # затем перезайдите в систему
-```
-Правила udev находятся в `packaging/99-sgk-uinput.rules`.
+- **`evdev.UInput` с полной картой `ecodes.KEY` → `OSError: [Errno 22]`.** В
+  `uinput_backend._sgk_capabilities()` объявляется явный подсписок клавиш.
+- **`gsettings get ... current` возвращает `uint32 1`** — префикс `uint32 ` надо
+  снять до `int()` (`_sgk_parse_gsettings_current`).
+- **Несовпадение имён раскладок:** ОС отдаёт `us`, карты/UI используют `en`.
+  `_SgkGsettings.switch_to` нормализует обе стороны; `SgkLayoutManager` — при чтении.
+- **Расширение `clipboard-indicator`** сохраняет транзитный текст в историю буфера.
+  Не секрет, но важно для полей пароля.
+- Иконка в трее синхронизируется через `QTimer`-опрос
+  `hotkey_manager.sgk_is_paused()` (хоткей `toggle` срабатывает не в Qt-потоке).
+
+## Полный план
+
+`_docs/PRD/PRD — sgk-wordwrap MVP (GNOME Wayland).md` — область, решения, ручная
+матрица тестов, критерии готовности.
