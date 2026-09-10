@@ -11,26 +11,11 @@ import shutil
 from pathlib import Path
 
 from sgk_wordwrap.utils.logger import sgk_get_logger
+from sgk_wordwrap.utils.resources import sgk_desktop_entry
 
 _logger = sgk_get_logger(__name__)
 
 SGK_AUTOSTART_PATH = Path.home() / ".config" / "autostart" / "wordwrap.desktop"
-
-_TEMPLATE = """\
-[Desktop Entry]
-Type=Application
-Name=WordWrap
-GenericName=Keyboard Layout Switcher
-Comment=Fix text typed in the wrong keyboard layout
-Exec={exec_cmd}
-Icon=wordwrap
-Categories=Utility;Accessibility;
-Keywords=keyboard;layout;switch;punto;
-Terminal=false
-StartupNotify=false
-X-GNOME-Autostart-enabled=true
-X-GNOME-Autostart-Delay=3
-"""
 
 
 def sgk_default_exec_cmd() -> str:
@@ -53,7 +38,9 @@ def sgk_set_autostart(enabled: bool, exec_cmd: str | None = None) -> bool:
     try:
         if enabled:
             SGK_AUTOSTART_PATH.parent.mkdir(parents=True, exist_ok=True)
-            content = _TEMPLATE.format(exec_cmd=exec_cmd or sgk_default_exec_cmd())
+            content = sgk_desktop_entry(
+                exec_cmd or sgk_default_exec_cmd(), autostart=True
+            )
             SGK_AUTOSTART_PATH.write_text(content, encoding="utf-8")
             _logger.info("sgk_autostart_enabled", extra={"path": str(SGK_AUTOSTART_PATH)})
         else:

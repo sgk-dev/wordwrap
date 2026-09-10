@@ -10,11 +10,10 @@ import sys
 from pathlib import Path
 
 from sgk_wordwrap.utils.logger import sgk_get_logger
+from sgk_wordwrap.utils.resources import sgk_desktop_entry, sgk_systemd_unit
 
 _logger = sgk_get_logger(__name__)
 
-_ROOT = Path(__file__).parent.parent
-_DESKTOP_SRC = _ROOT / "packaging" / "wordwrap.desktop"
 _ICON_SRC = Path(__file__).parent / "gui" / "icon.png"
 
 _APPS_DST = Path.home() / ".local" / "share" / "applications" / "wordwrap.desktop"
@@ -23,8 +22,12 @@ _ICON_DST = (
     / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps" / "wordwrap.png"
 )
 _AUTOSTART_DST = Path.home() / ".config" / "autostart" / "wordwrap.desktop"
-_SERVICE_SRC = _ROOT / "packaging" / "sgk-wordwrap.service"
 _SERVICE_DST = Path.home() / ".config" / "systemd" / "user" / "sgk-wordwrap.service"
+
+
+def _sgk_exec_cmd() -> str:
+    """Command the .desktop / service should run to start the daemon."""
+    return shutil.which("sgk-wordwrap") or f"{sys.executable} -m sgk_wordwrap"
 
 
 def _sgk_parse_args() -> argparse.Namespace:
@@ -69,16 +72,9 @@ def _sgk_install_desktop() -> None:
     if _ICON_SRC.exists():
         shutil.copy2(_ICON_SRC, _ICON_DST)
         print(f"Installed: {_ICON_DST}")
-    if _DESKTOP_SRC.exists():
-        # Point Exec at this interpreter so the menu entry works from source too
-        # (falls back to the `sgk-wordwrap` script when installed via pip).
-        text = _DESKTOP_SRC.read_text(encoding="utf-8")
-        exec_line = f"Exec={shutil.which('sgk-wordwrap') or sys.executable + ' -m sgk_wordwrap'}"
-        text = "\n".join(
-            exec_line if ln.startswith("Exec=") else ln for ln in text.splitlines()
-        ) + "\n"
-        _APPS_DST.write_text(text, encoding="utf-8")
-        print(f"Installed: {_APPS_DST}")
+
+    _APPS_DST.write_text(sgk_desktop_entry(_sgk_exec_cmd()), encoding="utf-8")
+    print(f"Installed: {_APPS_DST}")
 
     for cmd in (
         ["update-desktop-database", str(_APPS_DST.parent)],
@@ -98,16 +94,14 @@ def _sgk_install_service() -> None:
     for dst in (_SERVICE_DST, _AUTOSTART_DST):
         dst.parent.mkdir(parents=True, exist_ok=True)
 
-    if _DESKTOP_SRC.exists():
-        shutil.copy2(_DESKTOP_SRC, _AUTOSTART_DST)
-        print(f"Installed: {_AUTOSTART_DST}")
+    _AUTOSTART_DST.write_text(
+        sgk_desktop_entry(_sgk_exec_cmd(), autostart=True), encoding="utf-8"
+    )
+    print(f"Installed: {_AUTOSTART_DST}")
 
-    if _SERVICE_SRC.exists():
-        shutil.copy2(_SERVICE_SRC, _SERVICE_DST)
-        print(f"Installed: {_SERVICE_DST}")
-        print("Enable with: systemctl --user enable --now sgk-wordwrap")
-    else:
-        print("Warning: service file not found, skipping systemd setup")
+    _SERVICE_DST.write_text(sgk_systemd_unit(_sgk_exec_cmd()), encoding="utf-8")
+    print(f"Installed: {_SERVICE_DST}")
+    print("Enable with: systemctl --user enable --now sgk-wordwrap")
 
 
 def main() -> None:
