@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="sgk_wordwrap/gui/icon.png" alt="WordWrap logo" width="128">
+<img src="https://raw.githubusercontent.com/sgk-dev/wordwrap/master/sgk_wordwrap/gui/icon.png" alt="WordWrap logo" width="128">
 
 # WordWrap
 
