@@ -54,9 +54,19 @@ def _sgk_make_icon(paused: bool, style: str = "color"):
 
 
 def _sgk_theme_icon(name: str):
+    """Return a monochrome (symbolic) theme icon.
+
+    Prefers the ``-symbolic`` variant so menu icons stay monochrome and follow
+    the theme; falls back to the plain name, then to an empty icon (never a
+    colourful one).
+    """
     from PyQt6.QtGui import QIcon
 
-    return QIcon.fromTheme(name)
+    for candidate in (f"{name}-symbolic", name):
+        icon = QIcon.fromTheme(candidate)
+        if not icon.isNull():
+            return icon
+    return QIcon()
 
 
 class SgkTrayIcon:
