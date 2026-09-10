@@ -12,7 +12,7 @@ Select the mistyped text, press **Ctrl+F1**:
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-GNOME%20Wayland-e95420)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Tests](https://img.shields.io/badge/tests-101%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-104%20passing-brightgreen)
 
 </div>
 
