@@ -1,9 +1,10 @@
 """Unit tests for SgkTextProcessor (mocked dependencies).
 
 Text acquisition model: the processor calls clipboard.sgk_get() once to save the
-user's clipboard, then Ctrl+C's the selection and reads sgk_get() again to see
-whether it changed. So `get_returns` is the full sgk_get() call sequence:
-[saved, after_first_copy, (after_word_select_copy)].
+user's clipboard, then Ctrl+Insert's the selection and reads sgk_get() again to
+see whether it changed. So `get_returns` is the full sgk_get() call sequence:
+[saved, after_first_copy, (after_word_select_copy)]. The terminal flow instead
+reads clipboard.sgk_get_primary() (the `primary` kwarg).
 """
 
 from __future__ import annotations
@@ -28,11 +29,15 @@ def _make_processor(
     sensitive: bool = False,
     converted: str = "CONVERTED",
     fallback_to_word: bool = True,
+    primary: str | None = None,
 ) -> SgkTextProcessor:
     clipboard = MagicMock(spec=SgkClipboard)
     clipboard.sgk_get = AsyncMock(side_effect=(get_returns or [None] * 10))
+    clipboard.sgk_get_primary = AsyncMock(return_value=primary)
     clipboard.sgk_set = AsyncMock(return_value=True)
     clipboard.sgk_type_text = AsyncMock(return_value=True)
+    clipboard.sgk_paste_text = AsyncMock(return_value=True)
+    clipboard.sgk_backspace = AsyncMock()
     clipboard.sgk_send_key = AsyncMock()
 
     layout_manager = MagicMock(spec=SgkLayoutManager)
@@ -86,10 +91,46 @@ async def test_layout_switch_uinput_fallback_when_gsettings_ineffective() -> Non
 
 
 @pytest.mark.asyncio
-async def test_terminal_mode_passes_terminal_flag() -> None:
-    p = _make_processor(get_returns=["orig", "ghbdtn"], converted="привет")
-    await p.sgk_process(terminal=True)
-    p._clipboard.sgk_type_text.assert_called_once_with("привет", terminal=True)
+async def test_terminal_mode_backspaces_then_pastes() -> None:
+    p = _make_processor(
+        get_returns=["orig"], primary="руддщ", detected_layout="ru", converted="hello"
+    )
+    await p.sgk_process(mode="convert_terminal")
+    # erases exactly the selection length, then pastes with the terminal combo
+    p._clipboard.sgk_backspace.assert_called_once_with(len("руддщ"))
+    p._clipboard.sgk_paste_text.assert_called_once_with("hello", "ctrl+shift+v")
+    p._clipboard.sgk_type_text.assert_not_called()
+    p._layout_manager.sgk_switch_to.assert_called_once_with("en")
+
+
+@pytest.mark.asyncio
+async def test_terminal_mode_no_selection_is_noop() -> None:
+    p = _make_processor(get_returns=["orig"], primary="", converted="x")
+    await p.sgk_process(mode="convert_terminal")
+    p._clipboard.sgk_backspace.assert_not_called()
+    p._clipboard.sgk_paste_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_terminal_mode_refuses_overlong_text() -> None:
+    p = _make_processor(get_returns=["orig"], primary="a" * 500, converted="b" * 500)
+    p._terminal_max_backspaces = 200
+    await p.sgk_process(mode="convert_terminal")
+    p._clipboard.sgk_backspace.assert_not_called()
+    p._clipboard.sgk_paste_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_last_word_mode_forces_word_selection() -> None:
+    # No pre-existing selection: first sgk_get() is the save, then the word-select
+    # copy returns the word.
+    p = _make_processor(get_returns=["orig", "wordtext"], converted="ПЕРЕВОД")
+    await p.sgk_process(mode="convert_last_word")
+    calls = [c.args[0] for c in p._clipboard.sgk_send_key.call_args_list]
+    assert "ctrl+shift+Left" in calls
+    # it must NOT try to read an existing selection first
+    assert calls.count("ctrl+insert") == 1
+    p._clipboard.sgk_type_text.assert_called_once_with("ПЕРЕВОД", terminal=False)
 
 
 @pytest.mark.asyncio

@@ -104,6 +104,8 @@ class SgkApp:
             settle_ms=behavior.get("hotkey_settle_ms", 150),
             copy_settle_ms=behavior.get("copy_settle_ms", 120),
             layout_settle_ms=behavior.get("layout_settle_ms", 60),
+            terminal_paste_combo=behavior.get("terminal_paste_combo", "ctrl+shift+v"),
+            terminal_max_backspaces=behavior.get("terminal_max_backspaces", 200),
         )
         self._layout_manager = layout_manager
 
@@ -111,10 +113,10 @@ class SgkApp:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
-        def _run_convert(terminal: bool) -> None:
+        def _run_convert(mode: str) -> None:
             if self._loop:
                 asyncio.run_coroutine_threadsafe(
-                    processor.sgk_process(terminal=terminal), self._loop
+                    processor.sgk_process(mode=mode), self._loop
                 )
 
         self._hotkey_manager.sgk_set_handler(_run_convert)

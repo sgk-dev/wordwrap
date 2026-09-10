@@ -135,6 +135,18 @@ class SgkUinputInjector:
         codes.append(ecodes.KEY_V)
         self._sgk_emit_combo(codes)
 
+    def sgk_backspace(self, count: int, key_delay: float = 0.006) -> None:
+        """Press Backspace `count` times (used to erase text in a terminal)."""
+        if not self._ui or count <= 0:
+            return
+        for _ in range(count):
+            self._ui.write(ecodes.EV_KEY, ecodes.KEY_BACKSPACE, 1)
+            self._ui.syn()
+            time.sleep(_SGK_HOLD_S)
+            self._ui.write(ecodes.EV_KEY, ecodes.KEY_BACKSPACE, 0)
+            self._ui.syn()
+            time.sleep(key_delay)
+
     def sgk_close(self) -> None:
         if self._ui:
             try:

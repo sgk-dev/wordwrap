@@ -26,8 +26,11 @@ _MIN_INTERVAL = 0.3  # seconds - debounce repeated triggers, per hotkey
 _DEFAULT_HOTKEYS: dict[str, str] = {
     "convert": "ctrl+f1",
     "convert_terminal": "ctrl+shift+f1",
+    "convert_last_word": "ctrl+f2",
     "toggle": "ctrl+pause",
 }
+
+_CONVERT_MODES = ("convert", "convert_terminal", "convert_last_word")
 
 
 class SgkHotkeyManager:
@@ -37,7 +40,7 @@ class SgkHotkeyManager:
         self._hotkeys = {**_DEFAULT_HOTKEYS, **(hotkeys or {})}
         self._backend: SgkInputBackend | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._convert_handler: Callable[[bool], None] | None = None
+        self._convert_handler: Callable[[str], None] | None = None
         self._toggle_handler: Callable[[], None] | None = None
         self._last_trigger: dict[str, float] = {}
         self._paused = False
@@ -45,8 +48,11 @@ class SgkHotkeyManager:
 
     # -- wiring ------------------------------------------------------
 
-    def sgk_set_handler(self, handler: Callable[[bool], None]) -> None:
-        """`handler(terminal: bool)` runs a conversion. Called on the loop thread."""
+    def sgk_set_handler(self, handler: Callable[[str], None]) -> None:
+        """`handler(mode: str)` runs a conversion (mode = the hotkey name).
+
+        Called on the loop thread.
+        """
         self._convert_handler = handler
 
     def sgk_set_toggle_handler(self, handler: Callable[[], None]) -> None:
@@ -112,12 +118,11 @@ class SgkHotkeyManager:
                 self._loop.call_soon_threadsafe(self._toggle_handler)
             return
 
-        if paused:
+        if paused or name not in _CONVERT_MODES:
             return
 
-        terminal = name == "convert_terminal"
         if self._loop and self._convert_handler:
-            self._loop.call_soon_threadsafe(self._convert_handler, terminal)
+            self._loop.call_soon_threadsafe(self._convert_handler, name)
 
     # -- backend selection --------------------------------------
 

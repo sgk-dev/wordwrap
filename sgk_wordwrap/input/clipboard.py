@@ -155,6 +155,40 @@ class SgkClipboard:
         await asyncio.wait_for(proc.wait(), timeout=_CLIPBOARD_TIMEOUT + len(text) * 0.002)
         return proc.returncode == 0
 
+    async def sgk_backspace(self, count: int) -> None:
+        """Press Backspace `count` times (erase text, e.g. in a terminal)."""
+        if count <= 0:
+            return
+        await asyncio.sleep(self._delay)
+        try:
+            if self._display == "wayland" and self._uinput and self._uinput.sgk_is_available():
+                self._uinput.sgk_backspace(count)
+            else:
+                proc = await asyncio.create_subprocess_exec(
+                    "xdotool", "key", "--clearmodifiers",
+                    *(["BackSpace"] * count),
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.wait_for(proc.wait(), timeout=_CLIPBOARD_TIMEOUT + count * 0.01)
+        except Exception as exc:
+            _logger.warning("sgk_backspace_failed", extra={"error": str(exc)})
+
+    async def sgk_paste_text(self, text: str, combo: str) -> bool:
+        """Put `text` on the CLIPBOARD and paste with an explicit key combo.
+
+        Used for terminals, where the paste shortcut varies (Ctrl+Shift+V,
+        Shift+Insert). Caller saves/restores the user's clipboard.
+        """
+        if not (self._uinput and self._uinput.sgk_is_available()):
+            _logger.error("sgk_uinput_unavailable", extra={"hint": "cannot paste"})
+            return False
+        await self._sgk_run_set(["wl-copy"], text)
+        await asyncio.sleep(self._clipboard_settle)
+        self._uinput.sgk_send_combo(combo)
+        await asyncio.sleep(self._paste_settle)
+        return True
+
     # ------------------------------------------------------------------
     # Key simulation (for word selection fallback only)
     # ------------------------------------------------------------------
