@@ -23,6 +23,8 @@ def _make_processor(
     get_returns: list[str | None] | None = None,
     current_layout: str = "en",
     next_layout: str = "ru",
+    detected_layout: str | None = "en",
+    active_layouts: list[str] | None = None,
     sensitive: bool = False,
     converted: str = "CONVERTED",
     fallback_to_word: bool = True,
@@ -36,11 +38,13 @@ def _make_processor(
     layout_manager = MagicMock(spec=SgkLayoutManager)
     layout_manager.sgk_get_current_layout.return_value = current_layout
     layout_manager.sgk_get_next_layout.return_value = next_layout
+    layout_manager.sgk_get_active_layouts.return_value = active_layouts or ["en", "ru"]
     layout_manager.sgk_switch_to = MagicMock()
 
     mapper = MagicMock(spec=SgkLayoutMapper)
     mapper.sgk_has_map.return_value = True
     mapper.sgk_convert.return_value = converted
+    mapper.sgk_detect_likely_layout.return_value = detected_layout
 
     detector = MagicMock(spec=SgkFieldDetector)
     detector.sgk_is_sensitive_context.return_value = sensitive
@@ -75,16 +79,41 @@ async def test_terminal_mode_passes_terminal_flag() -> None:
 
 
 @pytest.mark.asyncio
+async def test_direction_follows_detected_source_not_active_layout() -> None:
+    # Text is Latin (detected 'en') even though the RU layout is currently active.
+    p = _make_processor(
+        get_returns=["orig", "ghbdtn"],
+        current_layout="ru",
+        detected_layout="en",
+        converted="привет",
+    )
+    await p.sgk_process()
+    p._mapper.sgk_convert.assert_called_once_with("ghbdtn", "en", "ru")
+    p._layout_manager.sgk_switch_to.assert_called_once_with("ru")
+
+
+@pytest.mark.asyncio
 async def test_reverse_direction_ru_to_en() -> None:
     p = _make_processor(
         get_returns=["orig", "руддщ"],
-        current_layout="ru",
-        next_layout="en",
+        detected_layout="ru",
         converted="hello",
     )
     await p.sgk_process()
     p._mapper.sgk_convert.assert_called_once_with("руддщ", "ru", "en")
     p._layout_manager.sgk_switch_to.assert_called_once_with("en")
+
+
+@pytest.mark.asyncio
+async def test_direction_falls_back_to_current_layout_when_undetectable() -> None:
+    p = _make_processor(
+        get_returns=["orig", "123"],
+        detected_layout=None,
+        current_layout="en",
+        converted="XXX",
+    )
+    await p.sgk_process()
+    p._mapper.sgk_convert.assert_called_once_with("123", "en", "ru")
 
 
 @pytest.mark.asyncio

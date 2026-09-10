@@ -113,12 +113,17 @@ class SgkLayoutMapper:
             return None
 
         scores: dict[str, int] = {layout: 0 for layout in candidates}
+        cand = set(candidates)
 
-        # Build reverse lookup: character → layout
+        # Build reverse lookup: character → source layout, but only from maps
+        # whose source is one of the candidates (otherwise e.g. the uk maps
+        # shadow ru for shared Cyrillic letters).
         char_to_layout: dict[str, str] = {}
         for (from_l, _to_l), layout_map in self._maps.items():
+            if from_l not in cand:
+                continue
             for char in layout_map.forward:
-                char_to_layout[char] = from_l
+                char_to_layout.setdefault(char, from_l)
 
         for char in text:
             if char.isalpha():

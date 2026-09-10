@@ -94,8 +94,7 @@ class SgkTextProcessor:
             await self._sgk_restore(saved_clipboard)
             return
 
-        layout_before = self._layout_manager.sgk_get_current_layout()
-        layout_after = self._layout_manager.sgk_get_next_layout()
+        layout_before, layout_after = self._sgk_pick_direction(text)
 
         if not self._mapper.sgk_has_map(layout_before, layout_after):
             _logger.warning(
@@ -125,6 +124,25 @@ class SgkTextProcessor:
                 "terminal": terminal,
             },
         )
+
+    def _sgk_pick_direction(self, text: str) -> tuple[str, str]:
+        """Decide which way to convert.
+
+        Direction depends on the *script the text is currently in*, not on which
+        layout is active (the wrong layout is usually still active, and for
+        already-typed text that tells us nothing). Detect the source layout from
+        the characters; fall back to current -> other only if undetectable.
+        """
+        active = self._layout_manager.sgk_get_active_layouts() or ["en", "ru"]
+        detected = self._mapper.sgk_detect_likely_layout(text, active)
+        source = detected or self._layout_manager.sgk_get_current_layout()
+        others = [lay for lay in active if lay != source]
+        target = others[0] if others else self._layout_manager.sgk_get_next_layout()
+        _logger.debug(
+            "sgk_direction",
+            extra={"detected": detected, "source": source, "target": target},
+        )
+        return source, target
 
     async def _sgk_acquire_text(self, saved_clipboard: str | None) -> str | None:
         """Get the text to convert.
