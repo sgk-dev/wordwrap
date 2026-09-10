@@ -311,6 +311,13 @@ class SgkTrayIcon:
             links.addWidget(donate_btn)
             layout.addLayout(links)
 
+            from PyQt6.QtCore import Qt
+
+            signature = QLabel("Developed by SGK with ❤️")
+            signature.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            signature.setStyleSheet("color: palette(mid); margin-top: 6px;")
+            layout.addWidget(signature)
+
             buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
             buttons.button(QDialogButtonBox.StandardButton.Close).setText(
                 sgk_tr("about.close", lang)

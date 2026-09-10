@@ -15,3 +15,6 @@ venv/
 htmlcov/
 .coverage
 *.log
+
+# local working docs, never part of the public repo
+_docs/
