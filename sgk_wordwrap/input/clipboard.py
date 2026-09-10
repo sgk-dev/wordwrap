@@ -29,14 +29,22 @@ _RETRIES = 2
 class SgkClipboard:
     """Clipboard read/write and text input for X11 and Wayland."""
 
-    def __init__(self, action_delay_ms: int = 50) -> None:
+    def __init__(
+        self,
+        action_delay_ms: int = 50,
+        clipboard_settle_ms: int = 80,
+        paste_settle_ms: int = 80,
+        uinput: SgkUinputInjector | None = None,
+    ) -> None:
         self._display = sgk_detect_display_server()
         self._delay = action_delay_ms / 1000.0
+        self._clipboard_settle = clipboard_settle_ms / 1000.0
+        self._paste_settle = paste_settle_ms / 1000.0
         self._saved_clipboard: str | None = None
-        
-        # Wayland-specific injector
-        self._uinput: SgkUinputInjector | None = None
-        if self._display == "wayland":
+
+        # Wayland-specific injector (uinput virtual keyboard)
+        self._uinput: SgkUinputInjector | None = uinput
+        if self._uinput is None and self._display == "wayland":
             self._uinput = SgkUinputInjector()
 
     # ------------------------------------------------------------------
@@ -103,63 +111,39 @@ class SgkClipboard:
     # Text input (replaces selected text in focused app)
     # ------------------------------------------------------------------
 
-    async def sgk_type_text(self, text: str) -> bool:
-        """Type text into the focused application, replacing any active selection.
+    async def sgk_type_text(self, text: str, terminal: bool = False) -> bool:
+        """Deliver `text` into the focused app, replacing any active selection.
 
-        Wayland: uses wtype (preferred) or wl-copy + Ctrl+V fallback.
-        X11:     uses xdotool type.
-        Returns True if successful.
+        Wayland: clipboard swap + synthetic paste (Ctrl+V, or Ctrl+Shift+V when
+        `terminal` is True). `wtype` is unsupported by Mutter and keycode typing
+        is layout-dependent, so this is the only reliable path.
+        X11: xdotool type.
+        The caller is responsible for saving/restoring the user's clipboard
+        around this call.
+        Returns True if the paste was issued.
         """
         await asyncio.sleep(self._delay)
         try:
             if self._display == "wayland":
-                return await self._sgk_type_wayland(text)
-            else:
-                return await self._sgk_type_x11(text)
+                return await self._sgk_type_wayland(text, terminal)
+            return await self._sgk_type_x11(text)
         except Exception as exc:
             _logger.warning("sgk_type_text_failed", extra={"error": str(exc)})
             return False
 
-    async def _sgk_type_wayland(self, text: str) -> bool:
-        """Type text in Wayland using wtype (best), ydotool (fallback), or clipboard (last resort)."""
-        # 1. wtype — standard Wayland typing tool
-        if shutil.which("wtype"):
-            proc = await asyncio.create_subprocess_exec(
-                "wtype", "--", text,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
+    async def _sgk_type_wayland(self, text: str, terminal: bool) -> bool:
+        """Put `text` on the CLIPBOARD and issue a synthetic paste via uinput."""
+        if not (self._uinput and self._uinput.sgk_is_available()):
+            _logger.error(
+                "sgk_uinput_unavailable",
+                extra={"hint": "uinput virtual keyboard not usable — cannot paste"},
             )
-            _, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=_CLIPBOARD_TIMEOUT + len(text) * 0.005
-            )
-            if proc.returncode == 0:
-                return True
-            _logger.debug("sgk_wtype_failed", extra={"error": stderr.decode().strip()})
+            return False
 
-        # 2. ydotool — injects via uinput
-        if shutil.which("ydotool"):
-            proc = await asyncio.create_subprocess_exec(
-                "ydotool", "type", "--", text,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                _, stderr = await asyncio.wait_for(
-                    proc.communicate(), timeout=_CLIPBOARD_TIMEOUT + len(text) * 0.005
-                )
-                if proc.returncode == 0:
-                    return True
-                _logger.debug("sgk_ydotool_failed", extra={"error": stderr.decode().strip()})
-            except asyncio.TimeoutError:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-
-        # 3. Last resort: put in CLIPBOARD and send Ctrl+V
-        _logger.warning("sgk_typing_fallback_to_clipboard")
-        await self.sgk_set(text)
-        await self.sgk_send_key("ctrl+v")
+        await self._sgk_run_set(["wl-copy"], text)
+        await asyncio.sleep(self._clipboard_settle)
+        self._uinput.sgk_paste(shift=terminal)
+        await asyncio.sleep(self._paste_settle)
         return True
 
     async def _sgk_type_x11(self, text: str) -> bool:
@@ -237,17 +221,17 @@ class SgkClipboard:
             if not mod:
                 return None
             args.extend(["-M", mod])
-        
+
         last = parts[-1].lower()
         # wtype uses lowercase for key names or specific names
         args.extend(["-P", last])
-        
+
         # Release modifiers
         for part in reversed(parts[:-1]):
             mod = _map.get(part.lower())
             if mod:
                 args.extend(["-m", mod])
-        
+
         return args
 
     def _sgk_combo_to_ydotool(self, combo: str) -> str:
