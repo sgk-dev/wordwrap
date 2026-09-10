@@ -30,6 +30,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "about.version": {"en": "Version", "ru": "Версия"},
     "about.author": {"en": "Author", "ru": "Автор"},
+    "about.license": {"en": "License", "ru": "Лицензия"},
     "about.star": {"en": "★ Star on GitHub", "ru": "★ Звезда на GitHub"},
     "about.donate": {"en": "♥ Support the project", "ru": "♥ Поддержать проект"},
     "about.close": {"en": "Close", "ru": "Закрыть"},

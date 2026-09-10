@@ -309,7 +309,8 @@ class SgkTrayIcon:
 
             meta = QLabel(
                 f"{sgk_tr('about.version', lang)} {__version__}  ·  "
-                f"{sgk_tr('about.author', lang)}: {__author__}"
+                f"{sgk_tr('about.author', lang)}: {__author__}<br>"
+                f"{sgk_tr('about.license', lang)}: GPL-3.0-or-later"
             )
             meta.setAlignment(center)
             meta.setStyleSheet("color: palette(mid);")

@@ -68,7 +68,7 @@ class SgkApp:
         cfg = self._config.sgk_load()
         self._sgk_configure_logging(cfg)
 
-        _logger.info("sgk_app_starting", extra={"version": "0.3.0"})
+        _logger.info("sgk_app_starting", extra={"version": "0.3.1"})
 
         # Initialise all components
         mapper = SgkLayoutMapper(

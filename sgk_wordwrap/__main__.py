@@ -59,7 +59,7 @@ def _sgk_parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.3.0",
+        version="%(prog)s 0.3.1",
     )
     return parser.parse_args()
 
