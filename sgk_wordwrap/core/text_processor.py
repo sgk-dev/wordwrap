@@ -45,6 +45,8 @@ class SgkTextProcessor:
         copy_settle_ms: int = 120,
         layout_settle_ms: int = 60,
         terminal_paste_combo: str = "ctrl+shift+v",
+        terminal_erase: str = "line",
+        terminal_settle_ms: int = 300,
         terminal_max_backspaces: int = 200,
     ) -> None:
         self._clipboard = clipboard
@@ -57,6 +59,8 @@ class SgkTextProcessor:
         self._copy_settle = copy_settle_ms / 1000.0
         self._layout_settle = layout_settle_ms / 1000.0
         self._terminal_paste_combo = terminal_paste_combo
+        self._terminal_erase = terminal_erase
+        self._terminal_settle = terminal_settle_ms / 1000.0
         self._terminal_max_backspaces = terminal_max_backspaces
 
     async def sgk_process(self, mode: str = "convert") -> None:
@@ -69,10 +73,13 @@ class SgkTextProcessor:
         t_start = time.monotonic()
         try:
             # Let the physical hotkey keys (incl. modifiers) release first.
-            await asyncio.sleep(self._settle)
             if mode == "convert_terminal":
+                # Terminals need longer: the physical Ctrl+Shift of the hotkey
+                # must be fully released before we send Ctrl+A / Ctrl+K etc.
+                await asyncio.sleep(self._terminal_settle)
                 await self._sgk_do_process_terminal()
             else:
+                await asyncio.sleep(self._settle)
                 await self._sgk_do_process(last_word=mode == "convert_last_word")
         except Exception as exc:
             _logger.error("sgk_process_unexpected_error", extra={"error": str(exc)})
@@ -166,9 +173,17 @@ class SgkTextProcessor:
 
         saved_clipboard = await self._clipboard.sgk_get()
 
-        text = await self._clipboard.sgk_get_primary()
-        if not text or not text.strip():
+        raw = await self._clipboard.sgk_get_primary()
+        if not raw or not raw.strip():
             _logger.info("sgk_terminal_no_selection")
+            await self._sgk_restore(saved_clipboard)
+            return
+
+        text = raw.strip()
+        if "\n" in text:
+            # A multi-line selection means the mouse grabbed rendered screen
+            # text (scrollback, another pane), not the current input token.
+            _logger.warning("sgk_terminal_multiline_selection", extra={"len": len(text)})
             await self._sgk_restore(saved_clipboard)
             return
 
@@ -191,19 +206,41 @@ class SgkTextProcessor:
             await self._sgk_restore(saved_clipboard)
             return
 
-        if len(text) > self._terminal_max_backspaces:
-            _logger.warning(
-                "sgk_terminal_too_long",
-                extra={"len": len(text), "max": self._terminal_max_backspaces},
-            )
+        if not await self._sgk_terminal_erase(text):
             await self._sgk_restore(saved_clipboard)
             return
 
-        await self._clipboard.sgk_backspace(len(text))
         await self._clipboard.sgk_paste_text(converted, self._terminal_paste_combo)
         await self._sgk_switch_layout(layout_after)
         await self._sgk_restore(saved_clipboard)
         self._sgk_log_convert(layout_before, layout_after, len(text), terminal=True)
+
+    async def _sgk_terminal_erase(self, text: str) -> bool:
+        """Erase `text` from the terminal input line. Returns False to abort.
+
+        - "line"      : Ctrl+A then Ctrl+K - clears the whole input line
+                        (robust: no keystroke counting; the old text goes to the
+                        readline kill-ring, Ctrl+Y restores it).
+        - "word"      : Ctrl+W once per whitespace-separated token.
+        - "backspace" : Backspace once per character (needs the mistyped text to
+                        be exactly at the cursor; keystrokes can be dropped).
+        """
+        mode = self._terminal_erase
+        if mode == "backspace":
+            if len(text) > self._terminal_max_backspaces:
+                _logger.warning(
+                    "sgk_terminal_too_long",
+                    extra={"len": len(text), "max": self._terminal_max_backspaces},
+                )
+                return False
+            await self._clipboard.sgk_backspace(len(text))
+        elif mode == "word":
+            for _ in range(text.count(" ") + text.count("\t") + 1):
+                await self._clipboard.sgk_send_key("ctrl+w")
+        else:  # "line"
+            await self._clipboard.sgk_send_key("ctrl+a")
+            await self._clipboard.sgk_send_key("ctrl+k")
+        return True
 
     def _sgk_pick_direction(self, text: str) -> tuple[str, str]:
         """Decide which way to convert.

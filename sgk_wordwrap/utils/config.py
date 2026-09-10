@@ -67,6 +67,8 @@ _SGK_DEFAULT_CONFIG: dict[str, Any] = {
         "layout_settle_ms": 60,
         "max_text_length": 10000,
         "terminal_paste_combo": "ctrl+shift+v",
+        "terminal_erase": "line",
+        "terminal_settle_ms": 300,
         "terminal_max_backspaces": 200,
     },
     "logging": {

@@ -30,6 +30,7 @@ def _make_processor(
     converted: str = "CONVERTED",
     fallback_to_word: bool = True,
     primary: str | None = None,
+    terminal_erase: str = "line",
 ) -> SgkTextProcessor:
     clipboard = MagicMock(spec=SgkClipboard)
     clipboard.sgk_get = AsyncMock(side_effect=(get_returns or [None] * 10))
@@ -67,6 +68,8 @@ def _make_processor(
         settle_ms=0,
         copy_settle_ms=0,
         layout_settle_ms=0,
+        terminal_settle_ms=0,
+        terminal_erase=terminal_erase,
     )
 
 
@@ -91,31 +94,55 @@ async def test_layout_switch_uinput_fallback_when_gsettings_ineffective() -> Non
 
 
 @pytest.mark.asyncio
-async def test_terminal_mode_backspaces_then_pastes() -> None:
+async def test_terminal_mode_clears_line_then_pastes() -> None:
     p = _make_processor(
         get_returns=["orig"], primary="руддщ", detected_layout="ru", converted="hello"
     )
     await p.sgk_process(mode="convert_terminal")
-    # erases exactly the selection length, then pastes with the terminal combo
-    p._clipboard.sgk_backspace.assert_called_once_with(len("руддщ"))
+    calls = [c.args[0] for c in p._clipboard.sgk_send_key.call_args_list]
+    assert calls == ["ctrl+a", "ctrl+k"]
     p._clipboard.sgk_paste_text.assert_called_once_with("hello", "ctrl+shift+v")
     p._clipboard.sgk_type_text.assert_not_called()
     p._layout_manager.sgk_switch_to.assert_called_once_with("en")
 
 
 @pytest.mark.asyncio
+async def test_terminal_mode_strips_selection_whitespace() -> None:
+    p = _make_processor(
+        get_returns=["orig"], primary="  руддщ \n", detected_layout="ru",
+        converted="hello", terminal_erase="backspace",
+    )
+    await p.sgk_process(mode="convert_terminal")
+    # trailing "\n" was inside strip(), "  руддщ " -> "руддщ" (5), not 8
+    p._clipboard.sgk_backspace.assert_called_once_with(5)
+
+
+@pytest.mark.asyncio
+async def test_terminal_mode_backspace_mode() -> None:
+    p = _make_processor(
+        get_returns=["orig"], primary="руддщ", detected_layout="ru",
+        converted="hello", terminal_erase="backspace",
+    )
+    await p.sgk_process(mode="convert_terminal")
+    p._clipboard.sgk_backspace.assert_called_once_with(5)
+    p._clipboard.sgk_paste_text.assert_called_once_with("hello", "ctrl+shift+v")
+
+
+@pytest.mark.asyncio
 async def test_terminal_mode_no_selection_is_noop() -> None:
     p = _make_processor(get_returns=["orig"], primary="", converted="x")
     await p.sgk_process(mode="convert_terminal")
-    p._clipboard.sgk_backspace.assert_not_called()
+    p._clipboard.sgk_send_key.assert_not_called()
     p._clipboard.sgk_paste_text.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_terminal_mode_refuses_overlong_text() -> None:
-    p = _make_processor(get_returns=["orig"], primary="a" * 500, converted="b" * 500)
-    p._terminal_max_backspaces = 200
+async def test_terminal_mode_refuses_multiline_selection() -> None:
+    p = _make_processor(
+        get_returns=["orig"], primary="line one\nline two", converted="x"
+    )
     await p.sgk_process(mode="convert_terminal")
+    p._clipboard.sgk_send_key.assert_not_called()
     p._clipboard.sgk_backspace.assert_not_called()
     p._clipboard.sgk_paste_text.assert_not_called()
 

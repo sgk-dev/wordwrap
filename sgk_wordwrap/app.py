@@ -105,6 +105,8 @@ class SgkApp:
             copy_settle_ms=behavior.get("copy_settle_ms", 120),
             layout_settle_ms=behavior.get("layout_settle_ms", 60),
             terminal_paste_combo=behavior.get("terminal_paste_combo", "ctrl+shift+v"),
+            terminal_erase=behavior.get("terminal_erase", "line"),
+            terminal_settle_ms=behavior.get("terminal_settle_ms", 300),
             terminal_max_backspaces=behavior.get("terminal_max_backspaces", 200),
         )
         self._layout_manager = layout_manager
