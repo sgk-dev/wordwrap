@@ -1,24 +1,24 @@
 """Integration tests for SgkClipboard.
 
-Requires: Xvfb + xclip running in the test environment.
-Skip automatically if DISPLAY is not set or xclip is not installed.
+These touch the real system clipboard and are timing-sensitive (wl-copy forks to
+hold the selection), so they are opt-in. Enable with:
 
-Run with:
-    Xvfb :99 &
-    DISPLAY=:99 pytest tests/integration/test_clipboard.py -v
+    SGK_INTEGRATION=1 pytest tests/integration/ -v
+
+Needs a working X11 (xclip) or Wayland (wl-clipboard) clipboard in the session.
 """
 
 from __future__ import annotations
 
 import os
 import shutil
+
 import pytest
 
-
-# Skip entire module if we don't have a display or xclip
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("DISPLAY") or not shutil.which("xclip"),
-    reason="Requires DISPLAY and xclip",
+    os.environ.get("SGK_INTEGRATION") != "1"
+    or not (shutil.which("xclip") or shutil.which("wl-copy")),
+    reason="Set SGK_INTEGRATION=1 (and have xclip/wl-clipboard) to run",
 )
 
 
