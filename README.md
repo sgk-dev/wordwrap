@@ -11,7 +11,7 @@ Select the mistyped text, press **Ctrl+F1**:
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-GNOME%20Wayland-e95420)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-GPLv3-blue)
 ![Tests](https://img.shields.io/badge/tests-104%20passing-brightgreen)
 
 </div>
@@ -156,7 +156,14 @@ If WordWrap saves you time, a **star on GitHub** or a small donation via
 
 ## License
 
-MIT (c) SGK (sidash.seo@gmail.com)
+WordWrap is free software: you can redistribute it and/or modify it under the
+terms of the **GNU General Public License v3.0 or later** (see [`LICENSE`](LICENSE)).
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY.
+
+Copyright (c) 2026 SGK (sidash.seo@gmail.com)
+
+The **WordWrap** name and logo are not covered by the GPL and remain the property
+of SGK; forks must use a different name and their own artwork.
 
 ---
 

@@ -7,7 +7,7 @@ name = "sgk-wordwrap"
 version = "0.3.0"
 description = "Fix text typed in the wrong keyboard layout - Linux, GNOME Wayland"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "GPL-3.0-or-later"}
 authors = [{name = "SGK", email = "sidash.seo@gmail.com"}]
 requires-python = ">=3.10"
 keywords = ["keyboard", "layout", "xkb", "linux", "x11", "wayland", "input"]
@@ -15,7 +15,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: X11 Applications",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
