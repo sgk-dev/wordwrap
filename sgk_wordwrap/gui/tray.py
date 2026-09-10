@@ -285,7 +285,6 @@ class SgkTrayIcon:
             from PyQt6.QtGui import QDesktopServices, QPixmap
             from PyQt6.QtWidgets import (
                 QDialog,
-                QDialogButtonBox,
                 QHBoxLayout,
                 QLabel,
                 QPushButton,
@@ -368,15 +367,6 @@ class SgkTrayIcon:
             signature.setAlignment(center)
             signature.setStyleSheet(f"color: {muted.name()};")
             layout.addWidget(signature)
-
-            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-            buttons.button(QDialogButtonBox.StandardButton.Close).setText(
-                sgk_tr("about.close", lang)
-            )
-            buttons.setCenterButtons(True)
-            buttons.rejected.connect(dlg.reject)
-            buttons.accepted.connect(dlg.accept)
-            layout.addWidget(buttons)
 
             dlg.exec()
         except Exception as exc:

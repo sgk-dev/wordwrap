@@ -33,7 +33,6 @@ _STRINGS: dict[str, dict[str, str]] = {
     "about.license": {"en": "License", "ru": "Лицензия"},
     "about.star": {"en": "★ Star on GitHub", "ru": "★ Звезда на GitHub"},
     "about.donate": {"en": "♥ Support the project", "ru": "♥ Поддержать проект"},
-    "about.close": {"en": "Close", "ru": "Закрыть"},
     "about.thanks": {
         "en": "If WordWrap saves you time, a star or a small donation helps a lot.",
         "ru": "Если WordWrap экономит вам время - звезда или небольшой донат очень помогают.",
