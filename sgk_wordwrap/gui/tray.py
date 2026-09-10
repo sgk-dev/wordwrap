@@ -264,8 +264,8 @@ class SgkTrayIcon:
 
     def _sgk_show_about(self) -> None:
         try:
-            from PyQt6.QtCore import QUrl
-            from PyQt6.QtGui import QDesktopServices
+            from PyQt6.QtCore import Qt, QUrl
+            from PyQt6.QtGui import QDesktopServices, QPixmap
             from PyQt6.QtWidgets import (
                 QDialog,
                 QDialogButtonBox,
@@ -276,29 +276,54 @@ class SgkTrayIcon:
             )
 
             lang = self._lang
+            center = Qt.AlignmentFlag.AlignCenter
             dlg = QDialog()
             dlg.setWindowTitle(sgk_tr("about.title", lang))
-            dlg.setMinimumWidth(380)
+            dlg.setMinimumWidth(360)
 
             layout = QVBoxLayout(dlg)
+            layout.setSpacing(6)
+            layout.setContentsMargins(24, 20, 24, 16)
+
+            if _ICON_COLOR.exists():
+                logo = QLabel()
+                logo.setPixmap(
+                    QPixmap(str(_ICON_COLOR)).scaled(
+                        96, 96,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+                logo.setAlignment(center)
+                layout.addWidget(logo)
 
             title = QLabel("<b>WordWrap</b>")
             title.setStyleSheet("font-size: 16px;")
+            title.setAlignment(center)
             layout.addWidget(title)
-            layout.addWidget(QLabel(sgk_tr("about.tagline", lang)))
-            layout.addWidget(
-                QLabel(f"{sgk_tr('about.version', lang)}: {__version__}")
+
+            tagline = QLabel(sgk_tr("about.tagline", lang))
+            tagline.setWordWrap(True)
+            tagline.setAlignment(center)
+            layout.addWidget(tagline)
+
+            meta = QLabel(
+                f"{sgk_tr('about.version', lang)} {__version__}  ·  "
+                f"{sgk_tr('about.author', lang)}: {__author__}"
             )
-            layout.addWidget(
-                QLabel(f"{sgk_tr('about.author', lang)}: {__author__}")
-            )
+            meta.setAlignment(center)
+            meta.setStyleSheet("color: palette(mid);")
+            layout.addWidget(meta)
 
             thanks = QLabel(sgk_tr("about.thanks", lang))
             thanks.setWordWrap(True)
-            thanks.setStyleSheet("color: palette(mid); margin-top: 6px;")
+            thanks.setAlignment(center)
+            thanks.setStyleSheet("color: palette(mid);")
             layout.addWidget(thanks)
 
+            layout.addSpacing(4)
             links = QHBoxLayout()
+            links.setAlignment(center)
             star_btn = QPushButton(sgk_tr("about.star", lang))
             star_btn.clicked.connect(
                 lambda: QDesktopServices.openUrl(QUrl(SGK_GITHUB_URL))
@@ -311,17 +336,16 @@ class SgkTrayIcon:
             links.addWidget(donate_btn)
             layout.addLayout(links)
 
-            from PyQt6.QtCore import Qt
-
             signature = QLabel("Developed by SGK with ❤️")
-            signature.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            signature.setStyleSheet("color: palette(mid); margin-top: 6px;")
+            signature.setAlignment(center)
+            signature.setStyleSheet("color: palette(mid);")
             layout.addWidget(signature)
 
             buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
             buttons.button(QDialogButtonBox.StandardButton.Close).setText(
                 sgk_tr("about.close", lang)
             )
+            buttons.setCenterButtons(True)
             buttons.rejected.connect(dlg.reject)
             buttons.accepted.connect(dlg.accept)
             layout.addWidget(buttons)
