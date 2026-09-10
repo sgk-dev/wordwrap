@@ -1,7 +1,11 @@
-"""Backend-agnostic hotkey manager.
+"""Hotkey manager.
 
-Selects X11 or evdev backend based on the display server,
-bridges background thread callbacks into the asyncio event loop.
+Owns the evdev (Wayland) / X11 hotkey backend and bridges its background-thread
+callbacks onto the asyncio event loop. Handles several named hotkeys:
+
+  - ``convert``           — fix the selected text
+  - ``convert_terminal``  — same, but paste with Ctrl+Shift+V (terminals)
+  - ``toggle``            — enable/disable conversion (works while paused)
 """
 
 from __future__ import annotations
@@ -17,55 +21,62 @@ from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
 
-_MIN_INTERVAL = 0.3  # seconds — debounce repeated triggers
+_MIN_INTERVAL = 0.3  # seconds — debounce repeated triggers, per hotkey
+
+_DEFAULT_HOTKEYS: dict[str, str] = {
+    "convert": "ctrl+f1",
+    "convert_terminal": "ctrl+shift+f1",
+    "toggle": "ctrl+pause",
+}
 
 
 class SgkHotkeyManager:
-    """Manages hotkey listening and routes triggers into an asyncio coroutine."""
+    """Listens for the configured hotkeys and routes them onto the loop."""
 
-    def __init__(self, hotkey_str: str = "ctrl+shift+z") -> None:
-        self._hotkey_str = hotkey_str
+    def __init__(self, hotkeys: dict[str, str] | None = None) -> None:
+        self._hotkeys = {**_DEFAULT_HOTKEYS, **(hotkeys or {})}
         self._backend: SgkInputBackend | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._handler: Callable[[], None] | None = None
-        self._last_trigger = 0.0
+        self._convert_handler: Callable[[bool], None] | None = None
+        self._toggle_handler: Callable[[], None] | None = None
+        self._last_trigger: dict[str, float] = {}
         self._paused = False
         self._lock = threading.Lock()
 
-    def sgk_set_handler(self, coro_factory: Callable[[], None]) -> None:
-        """Set the callback to invoke when the hotkey fires.
+    # -- wiring ------------------------------------------------------
 
-        coro_factory is a plain synchronous function that schedules a coroutine
-        on the event loop.
-        """
-        self._handler = coro_factory
+    def sgk_set_handler(self, handler: Callable[[bool], None]) -> None:
+        """`handler(terminal: bool)` runs a conversion. Called on the loop thread."""
+        self._convert_handler = handler
+
+    def sgk_set_toggle_handler(self, handler: Callable[[], None]) -> None:
+        """`handler()` flips enabled/disabled. Called on the loop thread."""
+        self._toggle_handler = handler
 
     def sgk_start(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Start listening on the appropriate backend."""
         self._loop = loop
         self._backend = self._sgk_pick_backend()
-
         if self._backend is None:
             _logger.error("sgk_hotkey_no_backend")
             return
-
         if not self._backend.sgk_is_available():
             _logger.error(
                 "sgk_hotkey_backend_unavailable",
                 extra={"hint": self._sgk_get_unavailable_hint()},
             )
             return
-
         self._backend.sgk_start(self._sgk_on_hotkey_raw)
         _logger.info(
             "sgk_hotkey_manager_started",
-            extra={"hotkey": self._hotkey_str, "display": sgk_detect_display_server()},
+            extra={"hotkeys": self._hotkeys, "display": sgk_detect_display_server()},
         )
 
     def sgk_stop(self) -> None:
         if self._backend:
             self._backend.sgk_stop()
         _logger.info("sgk_hotkey_manager_stopped")
+
+    # -- pause state ----------------------------------------------
 
     def sgk_pause(self) -> None:
         with self._lock:
@@ -80,38 +91,53 @@ class SgkHotkeyManager:
     def sgk_is_paused(self) -> bool:
         return self._paused
 
-    def sgk_get_last_word(self) -> str | None:
-        """Get the typed word from the backend buffer (Wayland/evdev only)."""
-        if hasattr(self._backend, "sgk_get_last_word"):
-            return self._backend.sgk_get_last_word()  # type: ignore
-        return None
+    # -- dispatch -------------------------------------------------
 
-    def sgk_clear_buffer(self) -> None:
-        """Clear the backend's key buffer."""
-        if hasattr(self._backend, "sgk_clear_buffer"):
-            self._backend.sgk_clear_buffer()  # type: ignore
+    def _sgk_debounced(self, name: str) -> bool:
+        now = time.monotonic()
+        if now - self._last_trigger.get(name, 0.0) < _MIN_INTERVAL:
+            return False
+        self._last_trigger[name] = now
+        return True
 
-    def _sgk_on_hotkey_raw(self) -> None:
-        """Called from background thread — debounce and forward to event loop."""
+    def _sgk_on_hotkey_raw(self, name: str) -> None:
+        """Called from the evdev background thread."""
         with self._lock:
-            if self._paused:
+            if not self._sgk_debounced(name):
                 return
-            now = time.monotonic()
-            if now - self._last_trigger < _MIN_INTERVAL:
-                return
-            self._last_trigger = now
+            paused = self._paused
 
-        if self._loop and self._handler:
-            self._loop.call_soon_threadsafe(self._handler)
+        if name == "toggle":
+            if self._loop and self._toggle_handler:
+                self._loop.call_soon_threadsafe(self._toggle_handler)
+            return
+
+        if paused:
+            return
+
+        terminal = name == "convert_terminal"
+        if self._loop and self._convert_handler:
+            self._loop.call_soon_threadsafe(self._convert_handler, terminal)
+
+    # -- backend selection --------------------------------------
 
     def _sgk_pick_backend(self) -> SgkInputBackend | None:
-        display = sgk_detect_display_server()
-        if display == "x11":
+        if sgk_detect_display_server() == "x11":
             from sgk_wordwrap.input.x11_backend import SgkX11HotkeyListener
-            return SgkX11HotkeyListener(self._hotkey_str)
-        else:
-            from sgk_wordwrap.input.evdev_backend import SgkEvdevHotkeyListener
-            return SgkEvdevHotkeyListener(self._hotkey_str)
+
+            backend = SgkX11HotkeyListener(self._hotkeys["convert"])
+            # X11 backend is single-hotkey; adapt its 0-arg callback.
+            orig_start = backend.sgk_start
+
+            def _start(cb):  # noqa: ANN001
+                orig_start(lambda: cb("convert"))
+
+            backend.sgk_start = _start  # type: ignore[method-assign]
+            return backend
+
+        from sgk_wordwrap.input.evdev_backend import SgkEvdevHotkeyListener
+
+        return SgkEvdevHotkeyListener(self._hotkeys)
 
     def _sgk_get_unavailable_hint(self) -> str:
         if sgk_detect_display_server() == "wayland":

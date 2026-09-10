@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 from sgk_wordwrap.utils.config import SgkConfig
 
@@ -22,7 +23,7 @@ def config(config_path: Path) -> SgkConfig:
 class TestDefaults:
     def test_default_hotkey(self, config: SgkConfig) -> None:
         data = config.sgk_load()
-        assert data["hotkeys"]["convert"] == "ctrl+shift+z"
+        assert data["hotkeys"]["convert"] == "ctrl+f1"
 
     def test_default_blacklist_has_keepassxc(self, config: SgkConfig) -> None:
         data = config.sgk_load()
@@ -36,6 +37,15 @@ class TestDefaults:
     def test_default_behavior_fallback_true(self, config: SgkConfig) -> None:
         data = config.sgk_load()
         assert data["behavior"]["fallback_to_word_on_no_selection"] is True
+
+    def test_default_terminal_and_toggle_hotkeys(self, config: SgkConfig) -> None:
+        data = config.sgk_load()
+        assert data["hotkeys"]["convert_terminal"] == "ctrl+shift+f1"
+        assert data["hotkeys"]["toggle"] == "ctrl+pause"
+
+    def test_default_enabled_on_start(self, config: SgkConfig) -> None:
+        data = config.sgk_load()
+        assert data["behavior"]["enabled_on_start"] is True
 
 
 class TestLoadSave:
@@ -60,7 +70,7 @@ class TestLoadSave:
         config_path.write_text("{invalid json!!!", encoding="utf-8")
         cfg = SgkConfig(config_path=config_path)
         data = cfg.sgk_load()
-        assert data["hotkeys"]["convert"] == "ctrl+shift+z"
+        assert data["hotkeys"]["convert"] == "ctrl+f1"
 
 
 class TestGetSet:

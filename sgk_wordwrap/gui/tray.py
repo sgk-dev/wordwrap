@@ -26,21 +26,23 @@ class SgkTrayIcon:
         on_pause_toggle: Callable[[], None],
         on_open_settings: Callable[[], None],
         on_quit: Callable[[], None],
+        is_paused_getter: Callable[[], bool] | None = None,
     ) -> None:
         self._on_pause_toggle = on_pause_toggle
         self._on_open_settings = on_open_settings
         self._on_quit = on_quit
+        self._is_paused_getter = is_paused_getter
         self._tray = None
         self._pause_action = None
         self._layout_menu = None
+        self._state_timer = None
         self._paused = False
 
     def sgk_create(self) -> None:
         """Build and show the tray icon. Must be called from the Qt thread."""
         try:
-            from PyQt6.QtGui import QIcon, QPixmap, QColor
-            from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
-            from PyQt6.QtCore import Qt
+            from PyQt6.QtGui import QColor, QIcon, QPixmap
+            from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
             # Create a simple colored icon (16x16 filled square)
             pixmap = QPixmap(16, 16)
@@ -49,6 +51,13 @@ class SgkTrayIcon:
 
             self._tray = QSystemTrayIcon(icon)
             self._tray.setToolTip("sgk-wordwrap")
+
+            # Left click on the icon toggles enabled/disabled.
+            def _on_activated(reason) -> None:
+                if reason == QSystemTrayIcon.ActivationReason.Trigger:
+                    self._on_pause_toggle()
+
+            self._tray.activated.connect(_on_activated)
 
             menu = QMenu()
 
@@ -77,6 +86,16 @@ class SgkTrayIcon:
             self._tray.setContextMenu(menu)
             self._tray.show()
 
+            # Poll the app's enabled/disabled state so the icon stays in sync
+            # even when toggled from the hotkey (a non-Qt thread).
+            if self._is_paused_getter is not None:
+                from PyQt6.QtCore import QTimer
+
+                self._state_timer = QTimer()
+                self._state_timer.setInterval(300)
+                self._state_timer.timeout.connect(self._sgk_sync_state)
+                self._state_timer.start()
+
             _logger.info("sgk_tray_created")
 
         except ImportError:
@@ -91,7 +110,7 @@ class SgkTrayIcon:
             self._pause_action.setText("Paused" if paused else "Enabled")
         if self._tray:
             try:
-                from PyQt6.QtGui import QIcon, QPixmap, QColor
+                from PyQt6.QtGui import QColor, QIcon, QPixmap
                 color = "#888888" if paused else "#4A90D9"
                 pixmap = QPixmap(16, 16)
                 pixmap.fill(QColor(color))
@@ -114,6 +133,11 @@ class SgkTrayIcon:
                 pass
 
     def sgk_destroy(self) -> None:
+        if self._state_timer:
+            try:
+                self._state_timer.stop()
+            except Exception:
+                pass
         if self._tray:
             try:
                 self._tray.hide()
@@ -122,6 +146,16 @@ class SgkTrayIcon:
 
     def _sgk_handle_pause_toggle(self, checked: bool) -> None:
         self._on_pause_toggle()
+
+    def _sgk_sync_state(self) -> None:
+        if self._is_paused_getter is None:
+            return
+        try:
+            paused = bool(self._is_paused_getter())
+        except Exception:
+            return
+        if paused != self._paused:
+            self.sgk_set_paused(paused)
 
     def _sgk_update_layout_menu(
         self, layouts: list[str], current: str = ""

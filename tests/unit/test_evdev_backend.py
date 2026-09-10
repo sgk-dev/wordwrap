@@ -1,58 +1,72 @@
-"""Unit tests for SgkEvdevHotkeyListener ring-buffer logic."""
+"""Unit tests for hotkey parsing and dispatch resolution (evdev backend)."""
 
-import time
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import patch
 
-# Mock evdev before importing SgkEvdevHotkeyListener
-with patch('evdev.InputDevice'), patch('evdev.ecodes'):
-    from sgk_wordwrap.input.evdev_backend import SgkEvdevHotkeyListener, _sgk_keycode_to_char
+with patch("evdev.InputDevice"), patch("evdev.ecodes"):
+    from sgk_wordwrap.input.evdev_backend import (
+        _sgk_parse_hotkey,
+        _sgk_pick_hotkey,
+        _SgkHotkeySpec,
+    )
 
-@pytest.fixture
-def listener():
-    with patch('sgk_wordwrap.input.evdev_backend._sgk_parse_hotkey', return_value=(set(), "z")):
-        return SgkEvdevHotkeyListener("ctrl+shift+z")
 
-def test_keycode_to_char():
-    import evdev
-    # We need to mock ecodes specifically for the test to work if evdev is not installed or different
-    with patch('evdev.ecodes') as mock_ecodes:
-        mock_ecodes.KEY_A = 30
-        mock_ecodes.KEY_SPACE = 57
-        assert _sgk_keycode_to_char(30) == "a"
-        assert _sgk_keycode_to_char(57) == " "
-        assert _sgk_keycode_to_char(999) is None
+class TestParseHotkey:
+    def test_single_key(self):
+        mods, key = _sgk_parse_hotkey("pause")
+        assert mods == frozenset()
+        assert key == "pause"
 
-def test_buffer_append_and_get_word(listener):
-    import evdev
-    # Manually populate buffer
-    with patch('sgk_wordwrap.input.evdev_backend._sgk_keycode_to_char') as mock_ktc:
-        def side_effect(code):
-            mapping = {30: "t", 31: "e", 32: "s", 33: "t", 57: " "}
-            return mapping.get(code)
-        mock_ktc.side_effect = side_effect
-        
-        now = time.monotonic()
-        # "test "
-        listener._key_buffer.append((30, now))
-        listener._key_buffer.append((31, now))
-        listener._key_buffer.append((32, now))
-        listener._key_buffer.append((33, now))
-        
-        assert listener.sgk_get_last_word() == "test"
-        
-        # Add space and another word
-        listener._key_buffer.append((57, now))
-        listener._key_buffer.append((30, now)) # 't'
-        assert listener.sgk_get_last_word() == "t"
+    def test_ctrl_f1(self):
+        mods, key = _sgk_parse_hotkey("ctrl+f1")
+        assert mods == frozenset({"ctrl"})
+        assert key == "f1"
 
-def test_buffer_timeout(listener):
-    # Manually populate with old timestamp
-    listener._key_buffer.append((30, time.monotonic() - 10.0)) # 10s ago
-    assert listener.sgk_get_last_word() == ""
+    def test_ctrl_shift_f1(self):
+        mods, key = _sgk_parse_hotkey("ctrl+shift+f1")
+        assert mods == frozenset({"ctrl", "shift"})
+        assert key == "f1"
 
-def test_clear_buffer(listener):
-    listener._key_buffer.append((30, time.monotonic()))
-    listener.sgk_clear_buffer()
-    assert len(listener._key_buffer) == 0
-    assert listener.sgk_get_last_word() == ""
+    def test_gnome_style_angle_brackets(self):
+        mods, key = _sgk_parse_hotkey("<Ctrl>F1")
+        assert mods == frozenset({"ctrl"})
+        assert key == "f1"
+
+    def test_gnome_style_primary(self):
+        mods, key = _sgk_parse_hotkey("<Primary><Shift>F1")
+        assert mods == frozenset({"ctrl", "shift"})
+        assert key == "f1"
+
+
+def _specs():
+    return [
+        _SgkHotkeySpec("convert", frozenset({"ctrl"}), "f1"),
+        _SgkHotkeySpec("convert_terminal", frozenset({"ctrl", "shift"}), "f1"),
+        _SgkHotkeySpec("toggle", frozenset({"ctrl"}), "pause"),
+    ]
+
+
+class TestPickHotkey:
+    def test_exact_single_modifier(self):
+        assert _sgk_pick_hotkey({"ctrl"}, "f1", _specs()) == "convert"
+
+    def test_most_specific_wins(self):
+        # Ctrl+Shift+F1 pressed: both 'convert' (ctrl) and 'convert_terminal'
+        # (ctrl+shift) are satisfied — the more specific one must win.
+        assert (
+            _sgk_pick_hotkey({"ctrl", "shift"}, "f1", _specs())
+            == "convert_terminal"
+        )
+
+    def test_different_trigger_key(self):
+        assert _sgk_pick_hotkey({"ctrl"}, "pause", _specs()) == "toggle"
+
+    def test_missing_modifier_no_match(self):
+        assert _sgk_pick_hotkey(set(), "f1", _specs()) is None
+
+    def test_extra_unrelated_modifier_still_matches_lenient(self):
+        # Alt also held — we don't require an exact set, only that the spec's
+        # modifiers are all present.
+        assert _sgk_pick_hotkey({"ctrl", "alt"}, "f1", _specs()) == "convert"
+
+    def test_unknown_key(self):
+        assert _sgk_pick_hotkey({"ctrl"}, "z", _specs()) is None

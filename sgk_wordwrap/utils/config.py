@@ -16,7 +16,9 @@ _logger = sgk_get_logger(__name__)
 _SGK_DEFAULT_CONFIG: dict[str, Any] = {
     "version": "1.0",
     "hotkeys": {
-        "convert": "ctrl+shift+z",
+        "convert": "ctrl+f1",
+        "convert_terminal": "ctrl+shift+f1",
+        "toggle": "ctrl+pause",
     },
     "layouts": {
         "active": ["en", "ru"],
@@ -47,11 +49,15 @@ _SGK_DEFAULT_CONFIG: dict[str, Any] = {
         ],
     },
     "behavior": {
+        "enabled_on_start": True,
         "fallback_to_word_on_no_selection": True,
         "word_boundary_chars": " \t\n.,;:!?()[]{}\"'",
         "restore_clipboard": True,
         "clipboard_read_timeout_ms": 200,
         "action_delay_ms": 50,
+        "clipboard_settle_ms": 80,
+        "paste_settle_ms": 80,
+        "hotkey_settle_ms": 150,
         "max_text_length": 10000,
     },
     "logging": {
