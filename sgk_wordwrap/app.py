@@ -255,15 +255,11 @@ class SgkApp:
                 _logger.error("sgk_apply_ui_error", extra={"error": str(exc)})
 
     def _sgk_on_settings_saved(self, new_config: dict[str, Any]) -> None:
-        """Handle config changes from the settings dialog."""
-        from sgk_wordwrap.gui.i18n import sgk_tr
+        """Handle config changes from the settings dialog.
 
+        Deliberately does NOT raise a tray balloon: on many SNI hosts showing a
+        notification briefly swaps the tray icon for the notification glyph,
+        which looks like a flicker right after changing the icon style.
+        """
         self._config.sgk_save(new_config)
         _logger.info("sgk_settings_saved")
-        # Note: hotkey changes require restart; notify user
-        if self._tray:
-            lang = new_config.get("ui", {}).get("language", "en")
-            self._tray.sgk_show_message(
-                "WordWrap",
-                sgk_tr("cfg.saved", lang) + " " + sgk_tr("cfg.hotkey.note", lang),
-            )
