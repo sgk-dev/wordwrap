@@ -1,17 +1,17 @@
 """Wayland-compatible key injection using evdev.UInput.
 
-Provides a way to simulate key presses (Ctrl+C, Ctrl+V, Backspace) and type text
-directly through a virtual keyboard device.
-Requires 'uinput' kernel module and write access to /dev/uinput.
+Simulates key combos (Ctrl+V, Ctrl+Shift+V, Ctrl+Shift+Left, Backspace) through a
+virtual keyboard device. Requires the 'uinput' kernel module and write access to
+/dev/uinput (membership in the 'input' group).
+
+Note: this injector deliberately does NOT type arbitrary text. On Wayland/Mutter
+`wtype` is unavailable and keycode-level typing is layout-dependent, so converted
+text is always delivered via clipboard + Ctrl+V (see SgkClipboard).
 """
 
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 import evdev
 from evdev import ecodes
@@ -32,100 +32,112 @@ _SGK_NAME_TO_CODE: dict[str, int] = {
     "right": ecodes.KEY_RIGHT,
     "up":    ecodes.KEY_UP,
     "down":  ecodes.KEY_DOWN,
+    "home":  ecodes.KEY_HOME,
+    "end":   ecodes.KEY_END,
     "backspace": ecodes.KEY_BACKSPACE,
+    "delete": ecodes.KEY_DELETE,
     "enter": ecodes.KEY_ENTER,
     "space": ecodes.KEY_SPACE,
     "tab":   ecodes.KEY_TAB,
 }
 
+# Delay between the press phase and the release phase of a combo.
+_SGK_HOLD_S = 0.012
+
+
+def _sgk_capabilities() -> list[int]:
+    """Explicit key list for the virtual device.
+
+    Passing the full ``ecodes.KEY`` map to ``evdev.UInput`` fails with EINVAL on
+    this kernel, so declare only the keys any combo can realistically use.
+    """
+    codes: set[int] = set(_SGK_NAME_TO_CODE.values())
+    for name in list("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"):
+        codes.add(getattr(ecodes, f"KEY_{name}"))
+    for i in range(1, 13):
+        codes.add(getattr(ecodes, f"KEY_F{i}"))
+    codes.add(ecodes.KEY_RIGHTCTRL)
+    codes.add(ecodes.KEY_RIGHTSHIFT)
+    return sorted(codes)
+
 
 class SgkUinputInjector:
-    """Simulates keyboard input via evdev.UInput (Wayland-safe)."""
+    """Simulates keyboard combos via evdev.UInput (Wayland-safe)."""
 
-    def __init__(self, name: str = "SGK WordWrap Virtual Keyboard") -> None:
+    def __init__(
+        self,
+        name: str = "SGK WordWrap Virtual Keyboard",
+        ui: object | None = "auto",
+    ) -> None:
+        """`ui` may be an injected device (tests) or None to force unavailable.
+        Left at the "auto" sentinel, a real evdev.UInput is created.
+        """
         self._name = name
-        self._ui: evdev.UInput | None = None
-        self._sgk_initialize()
+        if ui == "auto":
+            self._ui = self._sgk_create_device()
+        else:
+            self._ui = ui
 
-    def _sgk_initialize(self) -> None:
-        """Create the virtual keyboard device with all possible keys."""
+    def _sgk_create_device(self):
         try:
-            # We want to support all keys that can be typed or simulated
-            cap = {
-                ecodes.EV_KEY: list(ecodes.KEY.keys()),
-            }
-            self._ui = evdev.UInput(cap, name=self._name)
+            cap = {ecodes.EV_KEY: _sgk_capabilities()}
+            dev = evdev.UInput(cap, name=self._name)
             _logger.info("sgk_uinput_initialized", extra={"device": self._name})
+            return dev
         except (PermissionError, OSError) as exc:
             _logger.warning(
                 "sgk_uinput_init_failed",
-                extra={"hint": "Ensure /dev/uinput is writable by 'input' group", "error": str(exc)},
+                extra={
+                    "hint": "Ensure /dev/uinput is writable by the 'input' group",
+                    "error": str(exc),
+                },
             )
-            self._ui = None
+            return None
 
     def sgk_is_available(self) -> bool:
         return self._ui is not None
 
-    def sgk_send_combo(self, combo: str) -> None:
-        """Send a key combination like 'ctrl+c' or 'ctrl+shift+left'."""
-        if not self._ui:
+    def _sgk_resolve(self, name: str) -> int | None:
+        code = _SGK_NAME_TO_CODE.get(name)
+        if code is None:
+            code = getattr(ecodes, f"KEY_{name.upper()}", None)
+        if code is None:
+            _logger.warning("sgk_uinput_unknown_key", extra={"key": name})
+        return code
+
+    def _sgk_emit_combo(self, codes: list[int]) -> None:
+        if not self._ui or not codes:
             return
-
-        parts = [p.strip().lower() for p in combo.split("+")]
-        codes = []
-        for p in parts:
-            code = _SGK_NAME_TO_CODE.get(p)
-            if code is None:
-                # Try KEY_ name
-                code_name = f"KEY_{p.upper()}"
-                code = getattr(ecodes, code_name, None)
-            
-            if code is not None:
-                codes.append(code)
-            else:
-                _logger.warning("sgk_uinput_unknown_key", extra={"key": p})
-
-        if not codes:
-            return
-
-        # Press all
         for c in codes:
             self._ui.write(ecodes.EV_KEY, c, 1)
         self._ui.syn()
-
-        time.sleep(0.01)
-
-        # Release all (reversed)
+        time.sleep(_SGK_HOLD_S)
         for c in reversed(codes):
             self._ui.write(ecodes.EV_KEY, c, 0)
         self._ui.syn()
 
-    def sgk_type_text(self, text: str) -> None:
-        """Type text character by character. Supports only simple ASCII-mappable keys.
-        For non-ASCII, it's better to use clipboard + Ctrl+V.
-        """
+    def sgk_send_combo(self, combo: str) -> None:
+        """Send a key combination like 'ctrl+v' or 'ctrl+shift+left'."""
         if not self._ui:
             return
+        parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
+        codes = [c for c in (self._sgk_resolve(p) for p in parts) if c is not None]
+        self._sgk_emit_combo(codes)
 
-        # Mapping for some ASCII chars to keys (US layout assumed for uinput injection)
-        # Note: This is very basic. For full international support, use clipboard.
-        for char in text:
-            self._sgk_type_char(char)
-        
-        self._ui.syn()
-
-    def _sgk_type_char(self, char: str) -> None:
+    def sgk_paste(self, shift: bool = False) -> None:
+        """Send the paste shortcut: Ctrl+V, or Ctrl+Shift+V for terminals."""
         if not self._ui:
             return
-
-        # This is a bit complex because we need to know WHICH key + shift/alt
-        # For simplicity and robustness, we prefer using clipboard for text typing.
-        # But for very short things or when clipboard is risky, we can try here.
-        # However, evdev injection is layout-dependent on the *receiving* app's side.
-        # So we should probably stick to 'clipboard + Ctrl+V' for the actual converted text.
-        pass
+        codes = [ecodes.KEY_LEFTCTRL]
+        if shift:
+            codes.append(ecodes.KEY_LEFTSHIFT)
+        codes.append(ecodes.KEY_V)
+        self._sgk_emit_combo(codes)
 
     def sgk_close(self) -> None:
         if self._ui:
-            self._ui.close()
+            try:
+                self._ui.close()
+            except Exception:
+                pass
             self._ui = None
