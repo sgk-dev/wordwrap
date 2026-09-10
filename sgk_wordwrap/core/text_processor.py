@@ -42,6 +42,7 @@ class SgkTextProcessor:
         max_text_length: int = 10000,
         fallback_to_word: bool = True,
         settle_ms: int = 150,
+        copy_settle_ms: int = 120,
     ) -> None:
         self._clipboard = clipboard
         self._layout_manager = layout_manager
@@ -50,6 +51,7 @@ class SgkTextProcessor:
         self._max_length = max_text_length
         self._fallback_to_word = fallback_to_word
         self._settle = settle_ms / 1000.0
+        self._copy_settle = copy_settle_ms / 1000.0
 
     async def sgk_process(self, terminal: bool = False) -> None:
         """Entry point — called when a convert hotkey fires."""
@@ -81,7 +83,7 @@ class SgkTextProcessor:
 
         saved_clipboard = await self._clipboard.sgk_get()
 
-        text = await self._sgk_acquire_text()
+        text = await self._sgk_acquire_text(saved_clipboard)
         if not text:
             _logger.debug("sgk_no_text_acquired")
             await self._sgk_restore(saved_clipboard)
@@ -124,23 +126,35 @@ class SgkTextProcessor:
             },
         )
 
-    async def _sgk_acquire_text(self) -> str | None:
-        """PRIMARY selection, or (fallback) select the last word and re-read it."""
-        selected = await self._clipboard.sgk_get_primary()
-        if selected and selected.strip():
-            _logger.debug("sgk_acquired_via_primary", extra={"len": len(selected)})
-            return selected
+    async def _sgk_acquire_text(self, saved_clipboard: str | None) -> str | None:
+        """Get the text to convert.
+
+        PRIMARY persists the last mouse selection forever on Linux, so it cannot
+        tell us whether something is selected *now*. Instead we force the current
+        selection into the CLIPBOARD with Ctrl+C and see whether it changed. If
+        not, nothing is selected → (optionally) select the last word ourselves.
+        """
+        text = await self._sgk_copy_selection()
+        if text and text.strip() and text != saved_clipboard:
+            _logger.debug("sgk_acquired_via_selection", extra={"len": len(text)})
+            return text
 
         if not self._fallback_to_word:
             return None
 
         await self._clipboard.sgk_send_key("ctrl+shift+Left")
         await asyncio.sleep(0.12)
-        word = await self._clipboard.sgk_get_primary()
-        if word and word.strip():
-            _logger.debug("sgk_acquired_via_word_selection", extra={"len": len(word)})
-            return word
+        text = await self._sgk_copy_selection()
+        if text and text.strip() and text != saved_clipboard:
+            _logger.debug("sgk_acquired_via_word_selection", extra={"len": len(text)})
+            return text
         return None
+
+    async def _sgk_copy_selection(self) -> str | None:
+        """Ctrl+C the current selection into CLIPBOARD and read it back."""
+        await self._clipboard.sgk_send_key("ctrl+c")
+        await asyncio.sleep(self._copy_settle)
+        return await self._clipboard.sgk_get()
 
     async def _sgk_restore(self, saved: str | None) -> None:
         if saved is not None:

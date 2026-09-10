@@ -1,4 +1,10 @@
-"""Unit tests for SgkTextProcessor (mocked dependencies)."""
+"""Unit tests for SgkTextProcessor (mocked dependencies).
+
+Text acquisition model: the processor calls clipboard.sgk_get() once to save the
+user's clipboard, then Ctrl+C's the selection and reads sgk_get() again to see
+whether it changed. So `get_returns` is the full sgk_get() call sequence:
+[saved, after_first_copy, (after_word_select_copy)].
+"""
 
 from __future__ import annotations
 
@@ -14,7 +20,6 @@ from sgk_wordwrap.layouts.mapper import SgkLayoutMapper
 
 
 def _make_processor(
-    primary_returns: list[str | None] | None = None,
     get_returns: list[str | None] | None = None,
     current_layout: str = "en",
     next_layout: str = "ru",
@@ -24,7 +29,6 @@ def _make_processor(
 ) -> SgkTextProcessor:
     clipboard = MagicMock(spec=SgkClipboard)
     clipboard.sgk_get = AsyncMock(side_effect=(get_returns or [None] * 10))
-    clipboard.sgk_get_primary = AsyncMock(side_effect=(primary_returns or [None] * 10))
     clipboard.sgk_set = AsyncMock(return_value=True)
     clipboard.sgk_type_text = AsyncMock(return_value=True)
     clipboard.sgk_send_key = AsyncMock()
@@ -50,20 +54,22 @@ def _make_processor(
         max_text_length=10000,
         fallback_to_word=fallback_to_word,
         settle_ms=0,
+        copy_settle_ms=0,
     )
 
 
 @pytest.mark.asyncio
 async def test_selected_text_converted_and_pasted() -> None:
-    p = _make_processor(primary_returns=["ghbdtn"], get_returns=["orig"], converted="привет")
+    p = _make_processor(get_returns=["orig", "ghbdtn"], converted="привет")
     await p.sgk_process()
+    p._clipboard.sgk_send_key.assert_any_call("ctrl+c")
     p._clipboard.sgk_type_text.assert_called_once_with("привет", terminal=False)
     p._layout_manager.sgk_switch_to.assert_called_once_with("ru")
 
 
 @pytest.mark.asyncio
 async def test_terminal_mode_passes_terminal_flag() -> None:
-    p = _make_processor(primary_returns=["ghbdtn"], get_returns=["orig"], converted="привет")
+    p = _make_processor(get_returns=["orig", "ghbdtn"], converted="привет")
     await p.sgk_process(terminal=True)
     p._clipboard.sgk_type_text.assert_called_once_with("привет", terminal=True)
 
@@ -71,8 +77,7 @@ async def test_terminal_mode_passes_terminal_flag() -> None:
 @pytest.mark.asyncio
 async def test_reverse_direction_ru_to_en() -> None:
     p = _make_processor(
-        primary_returns=["руддщ"],
-        get_returns=["orig"],
+        get_returns=["orig", "руддщ"],
         current_layout="ru",
         next_layout="en",
         converted="hello",
@@ -84,16 +89,17 @@ async def test_reverse_direction_ru_to_en() -> None:
 
 @pytest.mark.asyncio
 async def test_no_selection_falls_back_to_word() -> None:
-    p = _make_processor(primary_returns=[None, "wordtext"], converted="WT_RU")
+    # first Ctrl+C leaves the clipboard unchanged (== saved) → word-select path
+    p = _make_processor(get_returns=["orig", "orig", "wordtext"], converted="WT_RU")
     await p.sgk_process()
-    calls = [str(c) for c in p._clipboard.sgk_send_key.call_args_list]
-    assert any("ctrl+shift+Left" in c for c in calls)
+    calls = [c.args[0] for c in p._clipboard.sgk_send_key.call_args_list]
+    assert "ctrl+shift+Left" in calls
     p._clipboard.sgk_type_text.assert_called_once_with("WT_RU", terminal=False)
 
 
 @pytest.mark.asyncio
 async def test_no_selection_no_fallback_is_noop() -> None:
-    p = _make_processor(primary_returns=[None], fallback_to_word=False)
+    p = _make_processor(get_returns=["orig", "orig"], fallback_to_word=False)
     await p.sgk_process()
     p._clipboard.sgk_type_text.assert_not_called()
     p._layout_manager.sgk_switch_to.assert_not_called()
@@ -104,20 +110,21 @@ async def test_sensitive_context_skipped_without_touching_clipboard() -> None:
     p = _make_processor(sensitive=True)
     await p.sgk_process()
     p._clipboard.sgk_get.assert_not_called()
+    p._clipboard.sgk_send_key.assert_not_called()
     p._clipboard.sgk_type_text.assert_not_called()
     p._layout_manager.sgk_switch_to.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_no_text_acquired_skipped() -> None:
-    p = _make_processor(primary_returns=[None, None])
+    p = _make_processor(get_returns=["orig", "orig", "orig"])
     await p.sgk_process()
     p._layout_manager.sgk_switch_to.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_text_too_long_skipped_and_clipboard_restored() -> None:
-    p = _make_processor(primary_returns=["a" * 20000], get_returns=["orig"])
+    p = _make_processor(get_returns=["orig", "a" * 20000])
     await p.sgk_process()
     p._clipboard.sgk_type_text.assert_not_called()
     p._layout_manager.sgk_switch_to.assert_not_called()
@@ -126,7 +133,7 @@ async def test_text_too_long_skipped_and_clipboard_restored() -> None:
 
 @pytest.mark.asyncio
 async def test_no_map_skipped() -> None:
-    p = _make_processor(primary_returns=["sometext"], get_returns=["orig"])
+    p = _make_processor(get_returns=["orig", "sometext"])
     p._mapper.sgk_has_map.return_value = False
     await p.sgk_process()
     p._layout_manager.sgk_switch_to.assert_not_called()
@@ -134,7 +141,7 @@ async def test_no_map_skipped() -> None:
 
 @pytest.mark.asyncio
 async def test_conversion_is_noop_when_nothing_changes() -> None:
-    p = _make_processor(primary_returns=["hello"], get_returns=["orig"], converted="hello")
+    p = _make_processor(get_returns=["orig", "hello"], converted="hello")
     await p.sgk_process()
     p._clipboard.sgk_type_text.assert_not_called()
     p._layout_manager.sgk_switch_to.assert_not_called()
@@ -143,8 +150,6 @@ async def test_conversion_is_noop_when_nothing_changes() -> None:
 
 @pytest.mark.asyncio
 async def test_clipboard_restored_after_successful_conversion() -> None:
-    p = _make_processor(
-        primary_returns=["text"], get_returns=["MY_SAVED"], converted="CONV"
-    )
+    p = _make_processor(get_returns=["MY_SAVED", "text"], converted="CONV")
     await p.sgk_process()
     assert p._clipboard.sgk_set.call_args_list[-1].args[0] == "MY_SAVED"
