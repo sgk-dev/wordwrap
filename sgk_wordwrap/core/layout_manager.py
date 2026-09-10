@@ -294,3 +294,35 @@ class SgkLayoutManager:
             return "ru"
         idx = layouts.index(current) if current in layouts else 0
         return layouts[(idx + 1) % len(layouts)]
+
+    def sgk_layout_matches(self, layout: str) -> bool:
+        """True if the given (canonical) layout is currently active."""
+        return self.sgk_get_current_layout() == _sgk_normalize(layout)
+
+    def sgk_get_switch_shortcut(self) -> str:
+        """The GNOME 'switch input source' shortcut, as a 'super+space' combo.
+
+        Read from ``org.gnome.desktop.wm.keybindings switch-input-source``
+        (default ``['<Super>space']``). Used as a uinput fallback when
+        ``gsettings set ... current`` does not take effect in the live session.
+        """
+        try:
+            raw = subprocess.check_output(
+                ["gsettings", "get", "org.gnome.desktop.wm.keybindings",
+                 "switch-input-source"],
+                text=True, timeout=1.0,
+            )
+            parsed = ast.literal_eval(raw.strip())
+            if isinstance(parsed, (list, tuple)) and parsed:
+                combo = str(parsed[0]).replace("<", "+").replace(">", "+")
+                alias = {"primary": "ctrl", "control": "ctrl", "meta": "super",
+                         "logo": "super", "hyper": "super"}
+                parts = [
+                    alias.get(p.strip().lower(), p.strip().lower())
+                    for p in combo.split("+") if p.strip()
+                ]
+                if parts:
+                    return "+".join(parts)
+        except Exception as exc:
+            _logger.debug("sgk_switch_shortcut_read_failed", extra={"error": str(exc)})
+        return "super+space"

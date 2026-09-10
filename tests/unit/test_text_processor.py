@@ -40,6 +40,8 @@ def _make_processor(
     layout_manager.sgk_get_next_layout.return_value = next_layout
     layout_manager.sgk_get_active_layouts.return_value = active_layouts or ["en", "ru"]
     layout_manager.sgk_switch_to = MagicMock()
+    layout_manager.sgk_layout_matches.return_value = True
+    layout_manager.sgk_get_switch_shortcut.return_value = "super+space"
 
     mapper = MagicMock(spec=SgkLayoutMapper)
     mapper.sgk_has_map.return_value = True
@@ -59,6 +61,7 @@ def _make_processor(
         fallback_to_word=fallback_to_word,
         settle_ms=0,
         copy_settle_ms=0,
+        layout_settle_ms=0,
     )
 
 
@@ -69,6 +72,17 @@ async def test_selected_text_converted_and_pasted() -> None:
     p._clipboard.sgk_send_key.assert_any_call("ctrl+insert")
     p._clipboard.sgk_type_text.assert_called_once_with("привет", terminal=False)
     p._layout_manager.sgk_switch_to.assert_called_once_with("ru")
+
+
+@pytest.mark.asyncio
+async def test_layout_switch_uinput_fallback_when_gsettings_ineffective() -> None:
+    p = _make_processor(get_returns=["orig", "ghbdtn"], converted="привет")
+    p._layout_manager.sgk_layout_matches.return_value = False
+    await p.sgk_process()
+    p._layout_manager.sgk_switch_to.assert_called_once_with("ru")
+    # gsettings did not stick -> pressed the GNOME switch shortcut as fallback
+    calls = [c.args[0] for c in p._clipboard.sgk_send_key.call_args_list]
+    assert "super+space" in calls
 
 
 @pytest.mark.asyncio

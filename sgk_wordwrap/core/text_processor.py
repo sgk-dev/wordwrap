@@ -43,6 +43,7 @@ class SgkTextProcessor:
         fallback_to_word: bool = True,
         settle_ms: int = 150,
         copy_settle_ms: int = 120,
+        layout_settle_ms: int = 60,
     ) -> None:
         self._clipboard = clipboard
         self._layout_manager = layout_manager
@@ -52,6 +53,7 @@ class SgkTextProcessor:
         self._fallback_to_word = fallback_to_word
         self._settle = settle_ms / 1000.0
         self._copy_settle = copy_settle_ms / 1000.0
+        self._layout_settle = layout_settle_ms / 1000.0
 
     async def sgk_process(self, terminal: bool = False) -> None:
         """Entry point - called when a convert hotkey fires."""
@@ -110,7 +112,7 @@ class SgkTextProcessor:
             return
 
         await self._clipboard.sgk_type_text(converted, terminal=terminal)
-        self._layout_manager.sgk_switch_to(layout_after)
+        await self._sgk_switch_layout(layout_after)
         await self._sgk_restore(saved_clipboard)
 
         _logger.info(
@@ -177,6 +179,35 @@ class SgkTextProcessor:
         await self._clipboard.sgk_send_key("ctrl+insert")
         await asyncio.sleep(self._copy_settle)
         return await self._clipboard.sgk_get()
+
+    async def _sgk_switch_layout(self, target: str) -> None:
+        """Switch the system layout to `target`, with a uinput fallback.
+
+        `gsettings set ... current <idx>` does not always take effect in a live
+        GNOME session, so if the layout has not changed after a short settle we
+        press the GNOME 'switch input source' shortcut (default Super+Space)
+        until it matches or we run out of tries.
+        """
+        self._layout_manager.sgk_switch_to(target)
+        await asyncio.sleep(self._layout_settle)
+        if self._layout_manager.sgk_layout_matches(target):
+            return
+
+        shortcut = self._layout_manager.sgk_get_switch_shortcut()
+        tries = max(1, len(self._layout_manager.sgk_get_active_layouts()))
+        for _ in range(tries):
+            await self._clipboard.sgk_send_key(shortcut)
+            await asyncio.sleep(0.08)
+            if self._layout_manager.sgk_layout_matches(target):
+                break
+        _logger.debug(
+            "sgk_layout_after_switch",
+            extra={
+                "want": target,
+                "now": self._layout_manager.sgk_get_current_layout(),
+                "used_shortcut": shortcut,
+            },
+        )
 
     async def _sgk_restore(self, saved: str | None) -> None:
         if saved is not None:

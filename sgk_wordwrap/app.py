@@ -103,6 +103,7 @@ class SgkApp:
             fallback_to_word=behavior.get("fallback_to_word_on_no_selection", True),
             settle_ms=behavior.get("hotkey_settle_ms", 150),
             copy_settle_ms=behavior.get("copy_settle_ms", 120),
+            layout_settle_ms=behavior.get("layout_settle_ms", 60),
         )
         self._layout_manager = layout_manager
 
