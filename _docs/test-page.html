@@ -27,18 +27,18 @@
 </style>
 </head>
 <body>
-<h1>sgk-wordwrap — страница проверки</h1>
+<h1>sgk-wordwrap - страница проверки</h1>
 
 <fieldset>
   <legend>Как проверять</legend>
   <ol>
     <li>Демон запущен: <code>python3 -m sgk_wordwrap --log-level DEBUG</code></li>
     <li>Кликните в поле ниже, наберите <code>ghbdtn</code> (или что угодно «не в той раскладке»).</li>
-    <li>Выделите текст (<code>Ctrl+A</code> в поле) — или не выделяйте, тогда возьмётся последнее слово.</li>
-    <li>Нажмите <b>Ctrl+F1</b>. Поле должно превратиться в <code>привет</code>, а системная раскладка — переключиться.</li>
-    <li>Для терминального варианта вставки — <b>Ctrl+Shift+F1</b>.</li>
+    <li>Выделите текст (<code>Ctrl+A</code> в поле) - или не выделяйте, тогда возьмётся последнее слово.</li>
+    <li>Нажмите <b>Ctrl+F1</b>. Поле должно превратиться в <code>привет</code>, а системная раскладка - переключиться.</li>
+    <li>Для терминального варианта вставки - <b>Ctrl+Shift+F1</b>.</li>
   </ol>
-  <p>Каждое изменение значения пишется в журнал внизу с точным содержимым и код-пойнтами —
+  <p>Каждое изменение значения пишется в журнал внизу с точным содержимым и код-пойнтами -
      так видно, что именно прилетело (замена, вставка рядом, лишние символы).</p>
 </fieldset>
 
@@ -52,7 +52,7 @@
     <button data-t="f1" data-v="">очистить</button>
     <button data-sel="f1">выделить всё</button>
   </div>
-  <div class="row">значение: <span class="val" id="f1v">—</span></div>
+  <div class="row">значение: <span class="val" id="f1v">-</span></div>
   <div class="cp" id="f1cp"></div>
 </fieldset>
 
@@ -64,7 +64,7 @@
     <button data-t="f2" data-v="">очистить</button>
     <button data-sel="f2">выделить всё</button>
   </div>
-  <div class="row">значение: <span class="val" id="f2v">—</span></div>
+  <div class="row">значение: <span class="val" id="f2v">-</span></div>
   <div class="cp" id="f2cp"></div>
 </fieldset>
 
@@ -101,7 +101,7 @@
   }
   function render(id) {
     const el = document.getElementById(id);
-    document.getElementById(id + 'v').textContent = el.value || '—';
+    document.getElementById(id + 'v').textContent = el.value || '-';
     document.getElementById(id + 'cp').textContent = cps(el.value);
   }
   function watch(id) {

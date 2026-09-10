@@ -3,9 +3,9 @@
 Owns the evdev (Wayland) / X11 hotkey backend and bridges its background-thread
 callbacks onto the asyncio event loop. Handles several named hotkeys:
 
-  - ``convert``           — fix the selected text
-  - ``convert_terminal``  — same, but paste with Ctrl+Shift+V (terminals)
-  - ``toggle``            — enable/disable conversion (works while paused)
+  - ``convert``           - fix the selected text
+  - ``convert_terminal``  - same, but paste with Ctrl+Shift+V (terminals)
+  - ``toggle``            - enable/disable conversion (works while paused)
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
 
-_MIN_INTERVAL = 0.3  # seconds — debounce repeated triggers, per hotkey
+_MIN_INTERVAL = 0.3  # seconds - debounce repeated triggers, per hotkey
 
 _DEFAULT_HOTKEYS: dict[str, str] = {
     "convert": "ctrl+f1",

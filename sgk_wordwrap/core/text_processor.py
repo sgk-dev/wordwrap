@@ -9,7 +9,7 @@ On hotkey:
   5. Direction = current layout → the other layout; bail if there is no map.
   6. Convert; bail if nothing changes.
   7. Paste the converted text (clipboard swap + Ctrl+V, or Ctrl+Shift+V for
-     terminals) — this replaces the active selection.
+     terminals) - this replaces the active selection.
   8. Switch the system layout to the target.
   9. Restore the user's clipboard.
 
@@ -54,7 +54,7 @@ class SgkTextProcessor:
         self._copy_settle = copy_settle_ms / 1000.0
 
     async def sgk_process(self, terminal: bool = False) -> None:
-        """Entry point — called when a convert hotkey fires."""
+        """Entry point - called when a convert hotkey fires."""
         t_start = time.monotonic()
         try:
             # Let the physical hotkey keys (incl. modifiers) release first.

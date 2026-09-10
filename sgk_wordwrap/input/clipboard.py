@@ -4,7 +4,7 @@ X11:     xclip + xdotool
 Wayland: wl-clipboard (wl-paste/wl-copy) + wtype for text input
 
 Key insight for Wayland:
-  - Selected text is automatically placed in PRIMARY selection — no Ctrl+C needed.
+  - Selected text is automatically placed in PRIMARY selection - no Ctrl+C needed.
   - Read selected text with: wl-paste --primary
   - Type replacement text with: wtype "text"  (replaces active selection)
 """
@@ -136,7 +136,7 @@ class SgkClipboard:
         if not (self._uinput and self._uinput.sgk_is_available()):
             _logger.error(
                 "sgk_uinput_unavailable",
-                extra={"hint": "uinput virtual keyboard not usable — cannot paste"},
+                extra={"hint": "uinput virtual keyboard not usable - cannot paste"},
             )
             return False
 

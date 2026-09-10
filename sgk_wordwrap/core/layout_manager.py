@@ -34,7 +34,7 @@ def _sgk_normalize(layout: str) -> str:
 def _sgk_parse_gsettings_current(raw: str) -> int:
     """Parse the value of `input-sources current`.
 
-    gsettings prints it as e.g. ``uint32 1`` — the ``uint32`` prefix must be
+    gsettings prints it as e.g. ``uint32 1`` - the ``uint32`` prefix must be
     stripped before int parsing. Returns 0 on any parse failure.
     """
     token = raw.strip().split()[-1] if raw.strip() else ""
@@ -74,7 +74,7 @@ class _SgkXkbSwitch:
 
     def get_current(self) -> str:
         out = subprocess.check_output(["xkb-switch"], text=True, timeout=1.0).strip()
-        # xkb-switch may return 'ru(phonetic)' — normalize to base name
+        # xkb-switch may return 'ru(phonetic)' - normalize to base name
         return out.split("(")[0].strip()
 
     def get_all(self) -> list[str]:
@@ -202,7 +202,7 @@ class _SgkGsettings:
 
 
 class SgkLayoutManager:
-    """Unified layout manager — auto-selects the best backend."""
+    """Unified layout manager - auto-selects the best backend."""
 
     def __init__(self) -> None:
         self._backend: _SgkLayoutBackend = self._sgk_pick_backend()

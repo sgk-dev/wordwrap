@@ -1,5 +1,5 @@
 [Unit]
-Description=SGK WordWrap — automatic keyboard layout switcher
+Description=SGK WordWrap - automatic keyboard layout switcher
 Documentation=https://github.com/sgk-dev/wordwrap
 After=graphical-session.target
 PartOf=graphical-session.target
@@ -17,7 +17,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=DISPLAY=:0
 PassEnvironment=WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DBUS_SESSION_BUS_ADDRESS
 
-# Resource limits — keep the daemon lightweight
+# Resource limits - keep the daemon lightweight
 MemoryMax=128M
 CPUQuota=10%
 

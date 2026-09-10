@@ -51,7 +51,7 @@ class TestPickHotkey:
 
     def test_most_specific_wins(self):
         # Ctrl+Shift+F1 pressed: both 'convert' (ctrl) and 'convert_terminal'
-        # (ctrl+shift) are satisfied — the more specific one must win.
+        # (ctrl+shift) are satisfied - the more specific one must win.
         assert (
             _sgk_pick_hotkey({"ctrl", "shift"}, "f1", _specs())
             == "convert_terminal"
@@ -64,7 +64,7 @@ class TestPickHotkey:
         assert _sgk_pick_hotkey(set(), "f1", _specs()) is None
 
     def test_extra_unrelated_modifier_still_matches_lenient(self):
-        # Alt also held — we don't require an exact set, only that the spec's
+        # Alt also held - we don't require an exact set, only that the spec's
         # modifiers are all present.
         assert _sgk_pick_hotkey({"ctrl", "alt"}, "f1", _specs()) == "convert"
 
