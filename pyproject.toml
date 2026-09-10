@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sgk-wordwrap"
-version = "0.2.0"
-description = "Automatic keyboard layout switcher for Linux (GNOME Wayland)"
+version = "0.3.0"
+description = "Fix text typed in the wrong keyboard layout - Linux, GNOME Wayland"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "SGK", email = "sidash.seo@gmail.com"}]
@@ -52,7 +52,7 @@ include = ["sgk_wordwrap*"]
 
 [tool.setuptools.package-data]
 "sgk_wordwrap.layouts" = ["data/*.json"]
-"sgk_wordwrap.gui" = ["icon.png"]
+"sgk_wordwrap.gui" = ["icon.png", "icon-mono.png"]
 
 [tool.ruff]
 line-length = 100
