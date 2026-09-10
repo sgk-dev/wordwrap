@@ -227,10 +227,16 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
                         for event in dev.read():  # type: ignore[union-attr]
                             if event.type != evdev.ecodes.EV_KEY:
                                 continue
-                            self._sgk_handle_key_event(
-                                evdev, event, mod_code_to_name,
-                                trigger_codes, pressed_mods,
-                            )
+                            try:
+                                self._sgk_handle_key_event(
+                                    evdev, event, mod_code_to_name,
+                                    trigger_codes, pressed_mods,
+                                )
+                            except Exception as exc:
+                                # One bad event must not kill the listener.
+                                _logger.error(
+                                    "sgk_evdev_event_error", extra={"error": str(exc)}
+                                )
                     except (OSError, BlockingIOError):
                         fds.pop(fd, None)
         except Exception as exc:
@@ -262,5 +268,5 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
                 set(pressed_mods), trigger_codes[keycode], self._specs
             )
             if name and self._callback:
-                _logger.debug("sgk_hotkey_triggered_evdev", extra={"name": name})
+                _logger.debug("sgk_hotkey_triggered_evdev", extra={"hotkey": name})
                 self._callback(name)

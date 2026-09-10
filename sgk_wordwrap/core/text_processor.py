@@ -75,7 +75,7 @@ class SgkTextProcessor:
         ):
             _logger.info(
                 "sgk_skipped_sensitive",
-                extra={"process": process_name, "class": window_class},
+                extra={"proc": process_name, "win_class": window_class},
             )
             return
 

@@ -67,7 +67,7 @@ class SgkFieldDetector:
         if process_name:
             pname = process_name.lower()
             if pname in _SGK_SENSITIVE_PROCESSES or pname in self._extra_processes:
-                _logger.debug("sgk_sensitive_process", extra={"process": process_name})
+                _logger.debug("sgk_sensitive_process", extra={"proc": process_name})
                 return True
 
         # Check window class
