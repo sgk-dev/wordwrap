@@ -9,6 +9,7 @@ Abstracts over:
 
 from __future__ import annotations
 
+import ast
 import shutil
 import subprocess
 from typing import Protocol
@@ -28,6 +29,36 @@ _SGK_LAYOUT_ALIASES: dict[str, str] = {
 
 def _sgk_normalize(layout: str) -> str:
     return _SGK_LAYOUT_ALIASES.get(layout.lower(), layout.lower())
+
+
+def _sgk_parse_gsettings_current(raw: str) -> int:
+    """Parse the value of `input-sources current`.
+
+    gsettings prints it as e.g. ``uint32 1`` — the ``uint32`` prefix must be
+    stripped before int parsing. Returns 0 on any parse failure.
+    """
+    token = raw.strip().split()[-1] if raw.strip() else ""
+    try:
+        return int(token)
+    except ValueError:
+        return 0
+
+
+def _sgk_parse_gsettings_sources(raw: str) -> list[str]:
+    """Parse `input-sources sources`, e.g. ``[('xkb', 'us'), ('xkb', 'ru')]``.
+
+    Only ``xkb`` entries are kept; layout variants (``ru+phonetic``) are reduced
+    to the base name. Returns [] on parse failure.
+    """
+    try:
+        sources = ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        return []
+    result: list[str] = []
+    for src in sources:
+        if isinstance(src, (list, tuple)) and len(src) == 2 and src[0] == "xkb":
+            result.append(str(src[1]).split("+")[0])
+    return result
 
 
 
@@ -74,7 +105,7 @@ class _SgkSetxkbmap:
             for line in out.splitlines():
                 if line.startswith("layout:"):
                     layouts_str = line.split(":", 1)[1].strip()
-                    all_layouts = [l.strip() for l in layouts_str.split(",")]
+                    all_layouts = [x.strip() for x in layouts_str.split(",")]
                     if all_layouts:
                         return all_layouts[self._current_idx % len(all_layouts)]
         except Exception:
@@ -89,7 +120,7 @@ class _SgkSetxkbmap:
             for line in out.splitlines():
                 if line.startswith("layout:"):
                     layouts_str = line.split(":", 1)[1].strip()
-                    return [l.strip() for l in layouts_str.split(",")]
+                    return [x.strip() for x in layouts_str.split(",")]
         except Exception:
             pass
         return ["en"]
@@ -120,11 +151,11 @@ class _SgkGsettings:
 
     def get_current(self) -> str:
         try:
-            idx_str = subprocess.check_output(
+            raw = subprocess.check_output(
                 ["gsettings", "get", "org.gnome.desktop.input-sources", "current"],
                 text=True, timeout=1.0,
-            ).strip()
-            idx = int(idx_str) if idx_str.isdigit() else 0
+            )
+            idx = _sgk_parse_gsettings_current(raw)
             all_layouts = self.get_all()
             if idx < len(all_layouts):
                 return all_layouts[idx]
@@ -137,35 +168,37 @@ class _SgkGsettings:
             raw = subprocess.check_output(
                 ["gsettings", "get", "org.gnome.desktop.input-sources", "sources"],
                 text=True, timeout=1.0,
-            ).strip()
-            # Format: [('xkb', 'en'), ('xkb', 'ru')]
-            import ast
-            sources = ast.literal_eval(raw)
-            return [src[1].split("+")[0] for src in sources if src[0] == "xkb"]
+            )
+            parsed = _sgk_parse_gsettings_sources(raw)
+            if parsed:
+                return parsed
         except Exception:
             pass
         return ["en"]
 
-    def switch_next(self) -> None:
-        all_layouts = self.get_all()
-        current = self.get_current()
-        idx = all_layouts.index(current) if current in all_layouts else 0
-        next_idx = (idx + 1) % len(all_layouts)
+    def _set_current(self, idx: int) -> None:
         subprocess.run(
             ["gsettings", "set", "org.gnome.desktop.input-sources",
-             "current", str(next_idx)],
+             "current", str(idx)],
             timeout=1.0,
         )
 
-    def switch_to(self, layout: str) -> None:
+    def switch_next(self) -> None:
         all_layouts = self.get_all()
-        if layout in all_layouts:
-            idx = all_layouts.index(layout)
-            subprocess.run(
-                ["gsettings", "set", "org.gnome.desktop.input-sources",
-                 "current", str(idx)],
-                timeout=1.0,
-            )
+        if not all_layouts:
+            return
+        current = self.get_current()
+        idx = all_layouts.index(current) if current in all_layouts else 0
+        self._set_current((idx + 1) % len(all_layouts))
+
+    def switch_to(self, layout: str) -> None:
+        # The caller passes canonical names ("en"); the OS list uses raw names
+        # ("us"). Match on the normalized form.
+        target = _sgk_normalize(layout)
+        for idx, name in enumerate(self.get_all()):
+            if _sgk_normalize(name) == target:
+                self._set_current(idx)
+                return
 
 
 class SgkLayoutManager:
@@ -188,7 +221,8 @@ class SgkLayoutManager:
                 )
                 return _SgkSetxkbmap()
         else:
-            # Wayland: try GNOME gsettings
+            # Wayland: GNOME gsettings is the only workable backend
+            # (xkb-switch / setxkbmap do not function under Mutter).
             if shutil.which("gsettings"):
                 try:
                     subprocess.check_output(
@@ -197,8 +231,16 @@ class SgkLayoutManager:
                     )
                     _logger.info("sgk_layout_backend", extra={"backend": "gsettings"})
                     return _SgkGsettings()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _logger.error(
+                        "sgk_gsettings_unavailable",
+                        extra={"error": str(exc)},
+                    )
+            _logger.error(
+                "sgk_no_layout_backend",
+                extra={"hint": "Wayland needs a working `gsettings` (GNOME)."},
+            )
+            return _SgkGsettings()
 
         _logger.error(
             "sgk_no_layout_backend",
@@ -215,7 +257,7 @@ class SgkLayoutManager:
 
     def sgk_get_active_layouts(self) -> list[str]:
         try:
-            return [_sgk_normalize(l) for l in self._backend.get_all()]
+            return [_sgk_normalize(x) for x in self._backend.get_all()]
         except Exception as exc:
             _logger.warning("sgk_get_layouts_failed", extra={"error": str(exc)})
             return ["en", "ru"]
