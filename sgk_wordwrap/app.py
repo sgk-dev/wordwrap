@@ -68,7 +68,7 @@ class SgkApp:
         cfg = self._config.sgk_load()
         self._sgk_configure_logging(cfg)
 
-        _logger.info("sgk_app_starting", extra={"version": "0.2.0"})
+        _logger.info("sgk_app_starting", extra={"version": "0.3.0"})
 
         # Initialise all components
         mapper = SgkLayoutMapper(
@@ -208,10 +208,15 @@ class SgkApp:
             self._qt_app = QApplication.instance() or QApplication(sys.argv)
             self._qt_app.setQuitOnLastWindowClosed(False)
 
+            ui_cfg = self._config.data.get("ui", {})
+            lang = ui_cfg.get("language", "en")
+            icon_style = ui_cfg.get("tray_icon_style", "color")
+
             def _open_settings() -> None:
                 dialog = SgkConfigDialog(
                     config_data=self._config.data,
                     on_save=self._sgk_on_settings_saved,
+                    on_ui_changed=self._sgk_apply_ui,
                 )
                 dialog.sgk_show()
 
@@ -225,14 +230,11 @@ class SgkApp:
                 on_open_settings=_open_settings,
                 on_quit=self.sgk_stop,
                 is_paused_getter=_is_paused,
+                lang=lang,
+                icon_style=icon_style,
             )
             self._tray.sgk_create()
             self._tray.sgk_set_paused(_is_paused())
-
-            # Update layout indicator
-            layouts = layout_manager.sgk_get_active_layouts()
-            current = layout_manager.sgk_get_current_layout()
-            self._tray.sgk_update_layouts(layouts, current)
 
             _logger.info("sgk_gui_started")
 
@@ -244,13 +246,24 @@ class SgkApp:
         except Exception as exc:
             _logger.error("sgk_gui_start_error", extra={"error": str(exc)})
 
+    def _sgk_apply_ui(self, lang: str, icon_style: str) -> None:
+        """Apply language / tray-icon changes to the running tray immediately."""
+        if self._tray:
+            try:
+                self._tray.sgk_apply_ui(lang=lang, icon_style=icon_style)
+            except Exception as exc:
+                _logger.error("sgk_apply_ui_error", extra={"error": str(exc)})
+
     def _sgk_on_settings_saved(self, new_config: dict[str, Any]) -> None:
         """Handle config changes from the settings dialog."""
+        from sgk_wordwrap.gui.i18n import sgk_tr
+
         self._config.sgk_save(new_config)
         _logger.info("sgk_settings_saved")
         # Note: hotkey changes require restart; notify user
         if self._tray:
+            lang = new_config.get("ui", {}).get("language", "en")
             self._tray.sgk_show_message(
-                "sgk-wordwrap",
-                "Settings saved. Restart to apply hotkey changes.",
+                "WordWrap",
+                sgk_tr("cfg.saved", lang) + " " + sgk_tr("cfg.hotkey.note", lang),
             )

@@ -15,6 +15,10 @@ _logger = sgk_get_logger(__name__)
 
 _SGK_DEFAULT_CONFIG: dict[str, Any] = {
     "version": "1.0",
+    "ui": {
+        "language": "en",
+        "tray_icon_style": "color",
+    },
     "hotkeys": {
         "convert": "ctrl+f1",
         "convert_terminal": "ctrl+shift+f1",

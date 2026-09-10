@@ -47,6 +47,11 @@ class TestDefaults:
         data = config.sgk_load()
         assert data["behavior"]["enabled_on_start"] is True
 
+    def test_default_ui_section(self, config: SgkConfig) -> None:
+        data = config.sgk_load()
+        assert data["ui"]["language"] == "en"
+        assert data["ui"]["tray_icon_style"] == "color"
+
 
 class TestLoadSave:
     def test_creates_file_on_first_load(

@@ -1,16 +1,23 @@
-"""Settings dialog for sgk-wordwrap.
+"""Settings dialog for WordWrap.
 
-Provides a tabbed PyQt6 QDialog for editing:
+A tabbed PyQt6 QDialog:
+  - General  (interface language, launch on login, monochrome tray icon)
   - Hotkeys
-  - Blacklist (processes, window classes, title patterns)
-  - Behavior options
-  - Logging settings
+  - Blacklist (blocked processes)
+  - Behavior
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable
 
+from sgk_wordwrap.gui.i18n import (
+    SGK_LANGUAGE_NAMES,
+    SGK_LANGUAGES,
+    sgk_normalize_lang,
+    sgk_tr,
+)
+from sgk_wordwrap.utils.autostart import sgk_is_autostart_enabled, sgk_set_autostart
 from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
@@ -23,10 +30,12 @@ class SgkConfigDialog:
         self,
         config_data: dict[str, Any],
         on_save: Callable[[dict[str, Any]], None],
+        on_ui_changed: Callable[[str, str], None] | None = None,
     ) -> None:
         self._config = config_data
         self._on_save = on_save
-        self._dialog = None
+        self._on_ui_changed = on_ui_changed
+        self._lang = sgk_normalize_lang(config_data.get("ui", {}).get("language", "en"))
 
     def sgk_show(self) -> None:
         """Create and show the settings dialog (blocking modal)."""
@@ -37,14 +46,19 @@ class SgkConfigDialog:
         except Exception as exc:
             _logger.error("sgk_dialog_error", extra={"error": str(exc)})
 
+    def _tr(self, key: str) -> str:
+        return sgk_tr(key, self._lang)
+
     def _sgk_build_and_exec(self) -> None:
         from PyQt6.QtWidgets import (
             QCheckBox,
+            QComboBox,
             QDialog,
             QDialogButtonBox,
             QFormLayout,
             QGroupBox,
             QHBoxLayout,
+            QLabel,
             QLineEdit,
             QListWidget,
             QPushButton,
@@ -54,43 +68,70 @@ class SgkConfigDialog:
             QWidget,
         )
 
+        ui_cfg = self._config.get("ui", {})
+        hotkeys = self._config.get("hotkeys", {})
+        behavior = self._config.get("behavior", {})
+
         dialog = QDialog()
-        dialog.setWindowTitle("sgk-wordwrap Settings")
-        dialog.setMinimumWidth(460)
+        dialog.setWindowTitle(self._tr("cfg.title"))
+        dialog.setMinimumWidth(480)
 
         tabs = QTabWidget()
 
+        # ---- Tab: General ----
+        gen_tab = QWidget()
+        gen_layout = QFormLayout(gen_tab)
+
+        lang_combo = QComboBox()
+        for code in SGK_LANGUAGES:
+            lang_combo.addItem(SGK_LANGUAGE_NAMES.get(code, code), code)
+        cur_idx = lang_combo.findData(self._lang)
+        lang_combo.setCurrentIndex(cur_idx if cur_idx >= 0 else 0)
+        gen_layout.addRow(self._tr("cfg.language"), lang_combo)
+
+        autostart_cb = QCheckBox()
+        autostart_cb.setChecked(sgk_is_autostart_enabled())
+        gen_layout.addRow(self._tr("cfg.autostart"), autostart_cb)
+
+        mono_cb = QCheckBox()
+        mono_cb.setChecked(ui_cfg.get("tray_icon_style", "color") == "mono")
+        gen_layout.addRow(self._tr("cfg.mono_icon"), mono_cb)
+
+        tabs.addTab(gen_tab, self._tr("cfg.tab.general"))
+
         # ---- Tab: Hotkeys ----
-        hotkeys_tab = QWidget()
-        hotkeys_layout = QFormLayout(hotkeys_tab)
-        hotkey_edit = QLineEdit(
-            self._config.get("hotkeys", {}).get("convert", "ctrl+shift+z")
-        )
-        hotkeys_layout.addRow("Convert hotkey:", hotkey_edit)
-        tabs.addTab(hotkeys_tab, "Hotkeys")
+        hk_tab = QWidget()
+        hk_layout = QFormLayout(hk_tab)
+        convert_edit = QLineEdit(hotkeys.get("convert", "ctrl+f1"))
+        terminal_edit = QLineEdit(hotkeys.get("convert_terminal", "ctrl+shift+f1"))
+        toggle_edit = QLineEdit(hotkeys.get("toggle", "ctrl+pause"))
+        hk_layout.addRow(self._tr("cfg.hotkey.convert"), convert_edit)
+        hk_layout.addRow(self._tr("cfg.hotkey.convert_terminal"), terminal_edit)
+        hk_layout.addRow(self._tr("cfg.hotkey.toggle"), toggle_edit)
+        note = QLabel(self._tr("cfg.hotkey.note"))
+        note.setStyleSheet("color: palette(mid);")
+        hk_layout.addRow(note)
+        tabs.addTab(hk_tab, self._tr("cfg.tab.hotkeys"))
 
         # ---- Tab: Blacklist ----
         bl_tab = QWidget()
         bl_layout = QVBoxLayout(bl_tab)
-
-        bl_processes_group = QGroupBox("Blocked processes")
-        bl_proc_layout = QVBoxLayout(bl_processes_group)
+        bl_group = QGroupBox(self._tr("cfg.bl.processes"))
+        bl_group_layout = QVBoxLayout(bl_group)
         proc_list = QListWidget()
-        proc_list.addItems(
-            self._config.get("blacklist", {}).get("processes", [])
-        )
-        proc_list.setToolTip("One process name per line (e.g., keepassxc)")
-        bl_proc_layout.addWidget(proc_list)
+        proc_list.addItems(self._config.get("blacklist", {}).get("processes", []))
+        proc_list.setToolTip(self._tr("cfg.bl.hint"))
+        bl_group_layout.addWidget(proc_list)
         proc_edit = QLineEdit()
-        proc_edit.setPlaceholderText("Add process name...")
+        proc_edit.setPlaceholderText(self._tr("cfg.bl.placeholder"))
         proc_buttons = QHBoxLayout()
-        proc_add = QPushButton("Add")
-        proc_remove = QPushButton("Remove")
+        proc_add = QPushButton(self._tr("cfg.bl.add"))
+        proc_remove = QPushButton(self._tr("cfg.bl.remove"))
         proc_buttons.addWidget(proc_add)
         proc_buttons.addWidget(proc_remove)
-        bl_proc_layout.addWidget(proc_edit)
-        bl_proc_layout.addLayout(proc_buttons)
-        bl_layout.addWidget(bl_processes_group)
+        bl_group_layout.addWidget(proc_edit)
+        bl_group_layout.addLayout(proc_buttons)
+        bl_layout.addWidget(bl_group)
 
         def _proc_add() -> None:
             text = proc_edit.text().strip()
@@ -104,29 +145,27 @@ class SgkConfigDialog:
 
         proc_add.clicked.connect(_proc_add)
         proc_remove.clicked.connect(_proc_remove)
-
-        tabs.addTab(bl_tab, "Blacklist")
+        tabs.addTab(bl_tab, self._tr("cfg.tab.blacklist"))
 
         # ---- Tab: Behavior ----
         beh_tab = QWidget()
         beh_layout = QFormLayout(beh_tab)
-        behavior = self._config.get("behavior", {})
 
         fallback_cb = QCheckBox()
         fallback_cb.setChecked(behavior.get("fallback_to_word_on_no_selection", True))
-        beh_layout.addRow("Word fallback (no selection):", fallback_cb)
+        beh_layout.addRow(self._tr("cfg.beh.fallback"), fallback_cb)
 
         restore_cb = QCheckBox()
         restore_cb.setChecked(behavior.get("restore_clipboard", True))
-        beh_layout.addRow("Restore clipboard after paste:", restore_cb)
+        beh_layout.addRow(self._tr("cfg.beh.restore"), restore_cb)
 
         delay_spin = QSpinBox()
         delay_spin.setRange(10, 500)
         delay_spin.setSuffix(" ms")
         delay_spin.setValue(behavior.get("action_delay_ms", 50))
-        beh_layout.addRow("Action delay:", delay_spin)
+        beh_layout.addRow(self._tr("cfg.beh.delay"), delay_spin)
 
-        tabs.addTab(beh_tab, "Behavior")
+        tabs.addTab(beh_tab, self._tr("cfg.tab.behavior"))
 
         # ---- Buttons ----
         buttons = QDialogButtonBox(
@@ -134,8 +173,18 @@ class SgkConfigDialog:
         )
 
         def _on_accept() -> None:
+            new_lang = lang_combo.currentData() or "en"
+            new_style = "mono" if mono_cb.isChecked() else "color"
+
             updated = dict(self._config)
-            updated.setdefault("hotkeys", {})["convert"] = hotkey_edit.text().strip()
+            updated.setdefault("ui", {}).update(
+                {"language": new_lang, "tray_icon_style": new_style}
+            )
+            updated.setdefault("hotkeys", {}).update({
+                "convert": convert_edit.text().strip(),
+                "convert_terminal": terminal_edit.text().strip(),
+                "toggle": toggle_edit.text().strip(),
+            })
             updated.setdefault("blacklist", {})["processes"] = [
                 proc_list.item(i).text() for i in range(proc_list.count())
             ]
@@ -144,7 +193,14 @@ class SgkConfigDialog:
                 "restore_clipboard": restore_cb.isChecked(),
                 "action_delay_ms": delay_spin.value(),
             })
+
+            sgk_set_autostart(autostart_cb.isChecked())
             self._on_save(updated)
+            if self._on_ui_changed is not None:
+                try:
+                    self._on_ui_changed(new_lang, new_style)
+                except Exception:
+                    pass
             dialog.accept()
 
         buttons.accepted.connect(_on_accept)
