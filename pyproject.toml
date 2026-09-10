@@ -52,7 +52,7 @@ include = ["sgk_wordwrap*"]
 
 [tool.setuptools.package-data]
 "sgk_wordwrap.layouts" = ["data/*.json"]
-"sgk_wordwrap.gui" = ["icon.png", "icon-mono.png"]
+"sgk_wordwrap.gui" = ["icon.png"]
 
 [tool.ruff]
 line-length = 100

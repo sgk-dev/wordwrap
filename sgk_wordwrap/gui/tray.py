@@ -6,8 +6,10 @@ PyQt6 QSystemTrayIcon with a context menu:
   - About  (author, version, GitHub / donate links)
   - Quit
 
-Menu items carry standard freedesktop theme icons. The tray icon itself has a
-colour and a monochrome variant, chosen by ``ui.tray_icon_style``.
+Menu items carry monochrome (symbolic) theme icons. The tray icon itself comes
+in a colour and a monochrome variant (``ui.tray_icon_style``); the monochrome
+one is recoloured to the panel's foreground colour so it stays visible on both
+light and dark themes - bright when enabled, dimmed when paused.
 Communicates with the main app via callback functions.
 """
 
@@ -23,30 +25,51 @@ from sgk_wordwrap.utils.logger import sgk_get_logger
 _logger = sgk_get_logger(__name__)
 
 _ICON_COLOR = Path(__file__).parent / "icon.png"
-_ICON_MONO = Path(__file__).parent / "icon-mono.png"
+
+_PAUSED_OPACITY = 0.4
 
 
-def _sgk_icon_path(style: str) -> Path:
-    return _ICON_MONO if style == "mono" and _ICON_MONO.exists() else _ICON_COLOR
+def _sgk_panel_fg():
+    """Foreground colour to paint the monochrome icon with.
+
+    Near-white on a dark panel, near-black on a light one - derived from the
+    current Qt palette so it tracks the system light/dark theme.
+    """
+    from PyQt6.QtGui import QColor, QPalette
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is not None:
+        win = app.palette().color(QPalette.ColorRole.Window)
+        if win.lightnessF() < 0.5:
+            return QColor("#f5f5f5")
+        return QColor("#2b2b2b")
+    return QColor("#f5f5f5")
 
 
 def _sgk_make_icon(paused: bool, style: str = "color"):
-    """Return a QIcon: the logo, dimmed when paused. Falls back to a dot."""
+    """Return the tray QIcon for the given state and style. Falls back to a dot."""
     from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 
-    path = _sgk_icon_path(style)
-    if path.exists():
-        pm = QPixmap(str(path))
-        if paused and not pm.isNull():
-            dim = QPixmap(pm.size())
-            dim.fill(QColor(0, 0, 0, 0))
-            p = QPainter(dim)
-            p.setOpacity(0.35)
-            p.drawPixmap(0, 0, pm)
+    if _ICON_COLOR.exists():
+        base = QPixmap(str(_ICON_COLOR))
+        if not base.isNull():
+            out = QPixmap(base.size())
+            out.fill(QColor(0, 0, 0, 0))
+            p = QPainter(out)
+            p.setOpacity(_PAUSED_OPACITY if paused else 1.0)
+            p.drawPixmap(0, 0, base)
+            p.setOpacity(1.0)
+            if style == "mono":
+                # Recolour opaque pixels to the panel foreground, keep alpha.
+                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+                p.fillRect(out.rect(), _sgk_panel_fg())
+            elif paused:
+                # Desaturate the colour icon when paused.
+                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+                p.fillRect(out.rect(), QColor(128, 128, 128, 255))
             p.end()
-            pm = dim
-        if not pm.isNull():
-            return QIcon(pm)
+            return QIcon(out)
 
     pm = QPixmap(16, 16)
     pm.fill(QColor("#888888" if paused else "#4A90D9"))
