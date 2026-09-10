@@ -276,6 +276,10 @@ class SgkLayoutManager:
     def sgk_switch_to(self, layout: str) -> None:
         try:
             self._backend.switch_to(layout)
+            _logger.debug(
+                "sgk_switch_to",
+                extra={"want": layout, "now": self._backend.get_current()},
+            )
         except Exception as exc:
             _logger.warning(
                 "sgk_switch_to_failed",

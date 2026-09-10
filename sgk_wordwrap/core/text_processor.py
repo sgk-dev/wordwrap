@@ -149,8 +149,12 @@ class SgkTextProcessor:
 
         PRIMARY persists the last mouse selection forever on Linux, so it cannot
         tell us whether something is selected *now*. Instead we force the current
-        selection into the CLIPBOARD with Ctrl+C and see whether it changed. If
-        not, nothing is selected → (optionally) select the last word ourselves.
+        selection into the CLIPBOARD with a copy shortcut and see whether it
+        changed. If not, nothing is selected → (optionally) select the last word
+        ourselves.
+
+        The copy shortcut is Ctrl+Insert, not Ctrl+C: in a terminal Ctrl+C is
+        SIGINT and would kill the foreground program.
         """
         text = await self._sgk_copy_selection()
         if text and text.strip() and text != saved_clipboard:
@@ -169,8 +173,8 @@ class SgkTextProcessor:
         return None
 
     async def _sgk_copy_selection(self) -> str | None:
-        """Ctrl+C the current selection into CLIPBOARD and read it back."""
-        await self._clipboard.sgk_send_key("ctrl+c")
+        """Copy the current selection into CLIPBOARD (Ctrl+Insert) and read it."""
+        await self._clipboard.sgk_send_key("ctrl+insert")
         await asyncio.sleep(self._copy_settle)
         return await self._clipboard.sgk_get()
 

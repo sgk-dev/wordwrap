@@ -34,6 +34,7 @@ _SGK_NAME_TO_CODE: dict[str, int] = {
     "down":  ecodes.KEY_DOWN,
     "home":  ecodes.KEY_HOME,
     "end":   ecodes.KEY_END,
+    "insert": ecodes.KEY_INSERT,
     "backspace": ecodes.KEY_BACKSPACE,
     "delete": ecodes.KEY_DELETE,
     "enter": ecodes.KEY_ENTER,

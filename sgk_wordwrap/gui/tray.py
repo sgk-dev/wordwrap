@@ -11,11 +11,36 @@ Communicates with the main app via callback functions.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable
 
 from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
+
+_ICON_PATH = Path(__file__).parent / "icon.png"
+
+
+def _sgk_make_icon(paused: bool):
+    """Return a QIcon: the logo, dimmed when paused. Falls back to a dot."""
+    from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
+
+    if _ICON_PATH.exists():
+        pm = QPixmap(str(_ICON_PATH))
+        if paused and not pm.isNull():
+            dim = QPixmap(pm.size())
+            dim.fill(QColor(0, 0, 0, 0))
+            p = QPainter(dim)
+            p.setOpacity(0.35)
+            p.drawPixmap(0, 0, pm)
+            p.end()
+            pm = dim
+        if not pm.isNull():
+            return QIcon(pm)
+
+    pm = QPixmap(16, 16)
+    pm.fill(QColor("#888888" if paused else "#4A90D9"))
+    return QIcon(pm)
 
 
 class SgkTrayIcon:
@@ -41,15 +66,9 @@ class SgkTrayIcon:
     def sgk_create(self) -> None:
         """Build and show the tray icon. Must be called from the Qt thread."""
         try:
-            from PyQt6.QtGui import QColor, QIcon, QPixmap
             from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
-            # Create a simple colored icon (16x16 filled square)
-            pixmap = QPixmap(16, 16)
-            pixmap.fill(QColor("#4A90D9"))
-            icon = QIcon(pixmap)
-
-            self._tray = QSystemTrayIcon(icon)
+            self._tray = QSystemTrayIcon(_sgk_make_icon(paused=False))
             self._tray.setToolTip("sgk-wordwrap")
 
             # Left click on the icon toggles enabled/disabled.
@@ -110,11 +129,10 @@ class SgkTrayIcon:
             self._pause_action.setText("Paused" if paused else "Enabled")
         if self._tray:
             try:
-                from PyQt6.QtGui import QColor, QIcon, QPixmap
-                color = "#888888" if paused else "#4A90D9"
-                pixmap = QPixmap(16, 16)
-                pixmap.fill(QColor(color))
-                self._tray.setIcon(QIcon(pixmap))
+                self._tray.setIcon(_sgk_make_icon(paused=paused))
+                self._tray.setToolTip(
+                    "sgk-wordwrap — выключено" if paused else "sgk-wordwrap"
+                )
             except Exception:
                 pass
 

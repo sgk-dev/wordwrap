@@ -66,7 +66,7 @@ def _make_processor(
 async def test_selected_text_converted_and_pasted() -> None:
     p = _make_processor(get_returns=["orig", "ghbdtn"], converted="привет")
     await p.sgk_process()
-    p._clipboard.sgk_send_key.assert_any_call("ctrl+c")
+    p._clipboard.sgk_send_key.assert_any_call("ctrl+insert")
     p._clipboard.sgk_type_text.assert_called_once_with("привет", terminal=False)
     p._layout_manager.sgk_switch_to.assert_called_once_with("ru")
 
