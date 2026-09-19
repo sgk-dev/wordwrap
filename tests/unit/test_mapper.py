@@ -52,7 +52,7 @@ class TestEnRuForward:
         assert mapper.sgk_convert("1234567890", "en", "ru") == "1234567890"
 
     def test_unknown_chars_passthrough(self, mapper: SgkLayoutMapper) -> None:
-        assert mapper.sgk_convert("€@#", "en", "ru") == "€@#"
+        assert mapper.sgk_convert("€±", "en", "ru") == "€±"
 
     def test_empty_string(self, mapper: SgkLayoutMapper) -> None:
         assert mapper.sgk_convert("", "en", "ru") == ""
@@ -119,3 +119,24 @@ class TestCustomMap:
         m.sgk_load_maps()
         assert m.sgk_has_map("en", "de")
         assert m.sgk_convert("aou", "en", "de") == "äöü"
+
+
+class TestPunctuation:
+    def test_shifted_digit_row_en_to_ru(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_convert('@#$^&', "en", "ru") == '"№;:?'
+
+    def test_slash_and_question_mark(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_convert("ghbdtn/", "en", "ru") == "привет."
+        assert mapper.sgk_convert("rfr ltkf?", "en", "ru") == "как дела,"
+
+    def test_ru_sentence_back_to_en(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_convert("привет.", "ru", "en") == "ghbdtn/"
+        assert mapper.sgk_convert("что?", "ru", "en") == "xnj&"
+
+    @pytest.mark.parametrize("pair", [("en", "ru"), ("en", "uk")])
+    def test_maps_are_bijective(self, mapper: SgkLayoutMapper, pair) -> None:
+        src, dst = pair
+        fwd = mapper._maps[(src, dst)].forward
+        assert len(set(fwd.values())) == len(fwd)
+        for ch in fwd:
+            assert mapper.sgk_convert(mapper.sgk_convert(ch, src, dst), dst, src) == ch
