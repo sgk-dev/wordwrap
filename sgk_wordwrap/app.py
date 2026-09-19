@@ -88,8 +88,8 @@ class SgkApp:
         behavior = cfg.get("behavior", {})
         clipboard = SgkClipboard(
             action_delay_ms=behavior.get("action_delay_ms", 50),
-            clipboard_settle_ms=behavior.get("clipboard_settle_ms", 80),
-            paste_settle_ms=behavior.get("paste_settle_ms", 80),
+            clipboard_settle_ms=behavior.get("clipboard_settle_ms", 150),
+            paste_settle_ms=behavior.get("paste_settle_ms", 100),
         )
 
         hotkeys = cfg.get("hotkeys", {})
@@ -104,7 +104,7 @@ class SgkApp:
             fallback_to_word=behavior.get("fallback_to_word_on_no_selection", True),
             restore_clipboard=behavior.get("restore_clipboard", True),
             settle_ms=behavior.get("hotkey_settle_ms", 150),
-            copy_settle_ms=behavior.get("copy_settle_ms", 120),
+            copy_settle_ms=behavior.get("copy_settle_ms", 400),
             layout_settle_ms=behavior.get("layout_settle_ms", 60),
             terminal_paste_combo=behavior.get("terminal_paste_combo", "ctrl+shift+v"),
             terminal_erase=behavior.get("terminal_erase", "line"),

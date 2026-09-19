@@ -31,8 +31,8 @@ class SgkClipboard:
     def __init__(
         self,
         action_delay_ms: int = 50,
-        clipboard_settle_ms: int = 80,
-        paste_settle_ms: int = 80,
+        clipboard_settle_ms: int = 150,
+        paste_settle_ms: int = 100,
         uinput: SgkUinputInjector | None = None,
     ) -> None:
         self._display = sgk_detect_display_server()
@@ -138,6 +138,7 @@ class SgkClipboard:
             await asyncio.sleep(self._clipboard_settle)
             self._uinput.sgk_send_combo(combo)
             await asyncio.sleep(self._paste_settle)
+            _logger.debug("sgk_paste_sent", extra={"combo": combo, "len": len(text)})
             return True
         except Exception as exc:
             _logger.warning("sgk_paste_text_failed", extra={"error": str(exc)})

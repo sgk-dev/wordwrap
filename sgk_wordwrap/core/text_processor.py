@@ -35,6 +35,7 @@ from sgk_wordwrap.utils.logger import sgk_get_logger
 _logger = sgk_get_logger(__name__)
 
 _PASTE_COMBO = "ctrl+v"
+_COPY_POLL_S = 0.04
 
 
 class SgkTextProcessor:
@@ -50,7 +51,7 @@ class SgkTextProcessor:
         fallback_to_word: bool = True,
         restore_clipboard: bool = True,
         settle_ms: int = 150,
-        copy_settle_ms: int = 120,
+        copy_settle_ms: int = 400,
         layout_settle_ms: int = 60,
         terminal_paste_combo: str = "ctrl+shift+v",
         terminal_erase: str = "line",
@@ -284,7 +285,7 @@ class SgkTextProcessor:
         baseline = marker if await self._clipboard.sgk_set(marker) else saved_clipboard
 
         if not force_word:
-            text = await self._sgk_copy_selection()
+            text = await self._sgk_copy_selection(baseline)
             if self._sgk_is_fresh(text, baseline):
                 _logger.debug("sgk_acquired_via_selection", extra={"len": len(text)})
                 return text
@@ -293,7 +294,7 @@ class SgkTextProcessor:
 
         await self._clipboard.sgk_send_key("ctrl+shift+Left")
         await asyncio.sleep(0.12)
-        text = await self._sgk_copy_selection()
+        text = await self._sgk_copy_selection(baseline)
         if self._sgk_is_fresh(text, baseline):
             _logger.debug("sgk_acquired_via_word_selection", extra={"len": len(text)})
             return text
@@ -303,11 +304,27 @@ class SgkTextProcessor:
     def _sgk_is_fresh(text: str | None, baseline: str | None) -> bool:
         return bool(text and text.strip() and text != baseline)
 
-    async def _sgk_copy_selection(self) -> str | None:
-        """Copy the current selection into CLIPBOARD (Ctrl+Insert) and read it."""
+    async def _sgk_copy_selection(self, baseline: str | None) -> str | None:
+        """Copy the current selection into CLIPBOARD (Ctrl+Insert) and read it.
+
+        Apps publish the new clipboard content with very different latency
+        (browsers can take a few hundred ms), so poll until it differs from
+        `baseline` or `copy_settle` runs out.
+        """
         await self._clipboard.sgk_send_key("ctrl+insert")
-        await asyncio.sleep(self._copy_settle)
-        return await self._clipboard.sgk_get()
+        t0 = time.monotonic()
+        text = None
+        while True:
+            await asyncio.sleep(min(_COPY_POLL_S, self._copy_settle))
+            text = await self._clipboard.sgk_get()
+            waited = time.monotonic() - t0
+            if self._sgk_is_fresh(text, baseline) or waited >= self._copy_settle:
+                break
+        _logger.debug(
+            "sgk_copy_read",
+            extra={"wait_ms": round(waited * 1000), "fresh": self._sgk_is_fresh(text, baseline)},
+        )
+        return text
 
     async def _sgk_switch_layout(self, target: str) -> None:
         """Switch the system layout to `target`, with a uinput fallback.

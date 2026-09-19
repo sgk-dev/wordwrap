@@ -38,6 +38,7 @@ def _make_processor(
     primary: str | None = None,
     terminal_erase: str = "line",
     set_ok: bool = True,
+    copy_settle_ms: int = 0,
 ) -> SgkTextProcessor:
     clipboard = MagicMock(spec=SgkClipboard)
     state = {"last_set": None}
@@ -90,7 +91,7 @@ def _make_processor(
         fallback_to_word=fallback_to_word,
         restore_clipboard=restore_clipboard,
         settle_ms=0,
-        copy_settle_ms=0,
+        copy_settle_ms=copy_settle_ms,
         layout_settle_ms=0,
         terminal_settle_ms=0,
         terminal_erase=terminal_erase,
@@ -375,3 +376,17 @@ async def test_non_text_clipboard_is_cleared_not_filled_with_garbage() -> None:
     await p.sgk_process()
     p._clipboard.sgk_clear.assert_called_once()
     assert all(v.startswith("sgk-wordwrap-") for v in _set_values(p))
+
+
+@pytest.mark.asyncio
+async def test_slow_app_clipboard_is_polled_until_it_changes() -> None:
+    p = _make_processor(
+        get_returns=["orig", MARKER, MARKER, "ghbdtn"],
+        converted="привет",
+        fallback_to_word=False,
+        copy_settle_ms=500,
+    )
+    await p.sgk_process()
+    assert "ctrl+shift+Left" not in _sent_keys(p)
+    p._clipboard.sgk_paste_text.assert_called_once_with("привет", "ctrl+v")
+    assert p._clipboard.sgk_get.call_count == 4
