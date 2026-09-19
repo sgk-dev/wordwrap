@@ -13,14 +13,10 @@ from sgk_wordwrap.input.clipboard import SgkClipboard
 
 class _FakeUinput:
     def __init__(self) -> None:
-        self.pastes: list[bool] = []
         self.combos: list[str] = []
 
     def sgk_is_available(self) -> bool:
         return True
-
-    def sgk_paste(self, shift: bool = False) -> None:
-        self.pastes.append(shift)
 
     def sgk_send_combo(self, combo: str) -> None:
         self.combos.append(combo)
@@ -56,23 +52,27 @@ def clip(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.asyncio
-async def test_type_text_copies_then_pastes(clip) -> None:
-    ok = await clip.sgk_type_text("привет")
+async def test_paste_text_copies_then_pastes(clip) -> None:
+    ok = await clip.sgk_paste_text("привет")
     assert ok is True
-    # wl-copy was invoked with the converted text
     assert any(t == "привет" for (_cmd, t) in clip._test_sets)
-    # a plain Ctrl+V paste was sent
-    assert clip._test_uinput.pastes == [False]
+    assert clip._test_uinput.combos == ["ctrl+v"]
 
 
 @pytest.mark.asyncio
-async def test_type_text_terminal_uses_shift_paste(clip) -> None:
-    await clip.sgk_type_text("hello", terminal=True)
-    assert clip._test_uinput.pastes == [True]
+async def test_paste_text_terminal_combo(clip) -> None:
+    await clip.sgk_paste_text("hello", "ctrl+shift+v")
+    assert clip._test_uinput.combos == ["ctrl+shift+v"]
 
 
 @pytest.mark.asyncio
-async def test_type_text_no_wtype_or_ydotool(clip, monkeypatch) -> None:
+async def test_clear_primary_uses_wl_copy_clear(clip) -> None:
+    await clip.sgk_clear_primary()
+    assert clip._test_sets[-1][0] == ["wl-copy", "--primary", "--clear"]
+
+
+@pytest.mark.asyncio
+async def test_paste_text_no_wtype_or_ydotool(clip, monkeypatch) -> None:
     """Regression: the Wayland path must not shell out to wtype/ydotool."""
     called: list[str] = []
 
@@ -83,7 +83,7 @@ async def test_type_text_no_wtype_or_ydotool(clip, monkeypatch) -> None:
     monkeypatch.setattr(
         "sgk_wordwrap.input.clipboard.asyncio.create_subprocess_exec", spy
     )
-    await clip.sgk_type_text("текст")
+    await clip.sgk_paste_text("текст")
     assert called == []
 
 

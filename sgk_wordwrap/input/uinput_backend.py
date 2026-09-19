@@ -125,16 +125,6 @@ class SgkUinputInjector:
         codes = [c for c in (self._sgk_resolve(p) for p in parts) if c is not None]
         self._sgk_emit_combo(codes)
 
-    def sgk_paste(self, shift: bool = False) -> None:
-        """Send the paste shortcut: Ctrl+V, or Ctrl+Shift+V for terminals."""
-        if not self._ui:
-            return
-        codes = [ecodes.KEY_LEFTCTRL]
-        if shift:
-            codes.append(ecodes.KEY_LEFTSHIFT)
-        codes.append(ecodes.KEY_V)
-        self._sgk_emit_combo(codes)
-
     def sgk_backspace(self, count: int, key_delay: float = 0.006) -> None:
         """Press Backspace `count` times (used to erase text in a terminal)."""
         if not self._ui or count <= 0:

@@ -39,7 +39,7 @@ def injector() -> SgkUinputInjector:
 
 class TestPaste:
     def test_plain_paste_is_ctrl_v(self, injector: SgkUinputInjector) -> None:
-        injector.sgk_paste(shift=False)
+        injector.sgk_send_combo("ctrl+v")
         assert injector._ui.key_events() == [
             (ecodes.KEY_LEFTCTRL, 1),
             (ecodes.KEY_V, 1),
@@ -48,7 +48,7 @@ class TestPaste:
         ]
 
     def test_terminal_paste_is_ctrl_shift_v(self, injector: SgkUinputInjector) -> None:
-        injector.sgk_paste(shift=True)
+        injector.sgk_send_combo("ctrl+shift+v")
         assert injector._ui.key_events() == [
             (ecodes.KEY_LEFTCTRL, 1),
             (ecodes.KEY_LEFTSHIFT, 1),
@@ -81,8 +81,7 @@ class TestCombo:
     def test_unavailable_injector_is_noop(self) -> None:
         inj = SgkUinputInjector(ui=None)
         assert inj.sgk_is_available() is False
-        inj.sgk_paste()  # must not raise
-        inj.sgk_send_combo("ctrl+v")
+        inj.sgk_send_combo("ctrl+v")  # must not raise
 
 
 class TestClose:

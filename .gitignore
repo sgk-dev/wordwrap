@@ -18,3 +18,6 @@ htmlcov/
 
 # local working docs, never part of the public repo
 _docs/
+
+# local Claude Code notes
+CLAUDE.local.md

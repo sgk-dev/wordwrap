@@ -101,6 +101,7 @@ class SgkApp:
             detector=detector,
             max_text_length=behavior.get("max_text_length", 10000),
             fallback_to_word=behavior.get("fallback_to_word_on_no_selection", True),
+            restore_clipboard=behavior.get("restore_clipboard", True),
             settle_ms=behavior.get("hotkey_settle_ms", 150),
             copy_settle_ms=behavior.get("copy_settle_ms", 120),
             layout_settle_ms=behavior.get("layout_settle_ms", 60),

@@ -2,24 +2,29 @@
 
 On hotkey:
   1. Skip if the focused context looks sensitive (password field / blacklist).
-  2. Save the user's clipboard.
-  3. Acquire text: PRIMARY selection; if empty and the fallback is enabled,
-     select the last word (Ctrl+Shift+Left) and read PRIMARY again.
+  2. Save the user's clipboard and put a private marker in it.
+  3. Acquire text: Ctrl+Insert copies the selection over the marker; if the
+     clipboard still holds the marker nothing was selected, so (optionally)
+     select the last word with Ctrl+Shift+Left and copy again.
   4. Bail out on unsafe text (empty / too long).
-  5. Direction = current layout → the other layout; bail if there is no map.
+  5. Direction = script the text is in -> the other layout; bail if no map.
   6. Convert; bail if nothing changes.
-  7. Paste the converted text (clipboard swap + Ctrl+V, or Ctrl+Shift+V for
-     terminals) - this replaces the active selection.
+  7. Paste the converted text (clipboard swap + Ctrl+V) - this replaces the
+     active selection. Terminals: clear the input line, paste with the
+     configured terminal combo.
   8. Switch the system layout to the target.
   9. Restore the user's clipboard.
 
-Any exception is logged; the daemon never crashes. Text content is never logged.
+Only one conversion runs at a time; a hotkey pressed while one is in flight is
+dropped. Any exception is logged; the daemon never crashes. Text content is
+never logged.
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 
 from sgk_wordwrap.core.layout_manager import SgkLayoutManager
 from sgk_wordwrap.input.clipboard import SgkClipboard
@@ -28,6 +33,8 @@ from sgk_wordwrap.layouts.mapper import SgkLayoutMapper
 from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
+
+_PASTE_COMBO = "ctrl+v"
 
 
 class SgkTextProcessor:
@@ -41,6 +48,7 @@ class SgkTextProcessor:
         detector: SgkFieldDetector,
         max_text_length: int = 10000,
         fallback_to_word: bool = True,
+        restore_clipboard: bool = True,
         settle_ms: int = 150,
         copy_settle_ms: int = 120,
         layout_settle_ms: int = 60,
@@ -55,6 +63,7 @@ class SgkTextProcessor:
         self._detector = detector
         self._max_length = max_text_length
         self._fallback_to_word = fallback_to_word
+        self._restore_clipboard = restore_clipboard
         self._settle = settle_ms / 1000.0
         self._copy_settle = copy_settle_ms / 1000.0
         self._layout_settle = layout_settle_ms / 1000.0
@@ -62,6 +71,7 @@ class SgkTextProcessor:
         self._terminal_erase = terminal_erase
         self._terminal_settle = terminal_settle_ms / 1000.0
         self._terminal_max_backspaces = terminal_max_backspaces
+        self._busy = False
 
     async def sgk_process(self, mode: str = "convert") -> None:
         """Entry point - called when a convert hotkey fires.
@@ -70,12 +80,13 @@ class SgkTextProcessor:
         (erase + paste, for real terminals), "convert_last_word" (no selection
         needed - grabs the last word).
         """
+        if self._busy:
+            _logger.debug("sgk_process_busy", extra={"mode": mode})
+            return
+        self._busy = True
         t_start = time.monotonic()
         try:
-            # Let the physical hotkey keys (incl. modifiers) release first.
             if mode == "convert_terminal":
-                # Terminals need longer: the physical Ctrl+Shift of the hotkey
-                # must be fully released before we send Ctrl+A / Ctrl+K etc.
                 await asyncio.sleep(self._terminal_settle)
                 await self._sgk_do_process_terminal()
             else:
@@ -84,6 +95,7 @@ class SgkTextProcessor:
         except Exception as exc:
             _logger.error("sgk_process_unexpected_error", extra={"error": str(exc)})
         finally:
+            self._busy = False
             _logger.debug(
                 "sgk_process_done",
                 extra={"latency_ms": round((time.monotonic() - t_start) * 1000)},
@@ -106,40 +118,86 @@ class SgkTextProcessor:
     async def _sgk_do_process(self, last_word: bool = False) -> None:
         if self._sgk_sensitive():
             return
-        terminal = False
 
         saved_clipboard = await self._clipboard.sgk_get()
 
         text = await self._sgk_acquire_text(saved_clipboard, force_word=last_word)
         if not text:
             _logger.debug("sgk_no_text_acquired")
-            await self._sgk_restore(saved_clipboard)
+            await self._sgk_restore(saved_clipboard, force=True)
             return
 
+        prepared = self._sgk_prepare(text)
+        if prepared is None:
+            await self._sgk_restore(saved_clipboard, force=True)
+            return
+        converted, layout_before, layout_after = prepared
+
+        await self._clipboard.sgk_paste_text(converted, _PASTE_COMBO)
+        await self._sgk_switch_layout(layout_after)
+        await self._sgk_restore(saved_clipboard)
+        self._sgk_log_convert(layout_before, layout_after, len(text), terminal=False)
+
+    async def _sgk_do_process_terminal(self) -> None:
+        """Terminal flow: erase the mistyped text and paste the fixed text.
+
+        Real terminals have no editable selection and no 'replace on paste', and
+        Ctrl+Insert / Ctrl+Shift+Left mean different things per terminal. So:
+        take the text from the mouse selection (PRIMARY), clear the input line,
+        then paste the converted text with the configured terminal paste
+        shortcut. PRIMARY is cleared afterwards so a stale selection from some
+        other window cannot be replayed by the next hotkey press.
+
+        Assumes the mistyped text is the current input line (you typed it,
+        noticed, selected it, hit the hotkey).
+        """
+        if self._sgk_sensitive():
+            return
+
+        raw = await self._clipboard.sgk_get_primary()
+        if not raw or not raw.strip():
+            _logger.info("sgk_terminal_no_selection")
+            return
+
+        text = raw.strip()
+        if "\n" in text:
+            _logger.warning("sgk_terminal_multiline_selection", extra={"len": len(text)})
+            return
+
+        prepared = self._sgk_prepare(text)
+        if prepared is None:
+            return
+        converted, layout_before, layout_after = prepared
+
+        saved_clipboard = await self._clipboard.sgk_get()
+
+        if not await self._sgk_terminal_erase(text):
+            await self._sgk_restore(saved_clipboard, force=True)
+            return
+
+        await self._clipboard.sgk_paste_text(converted, self._terminal_paste_combo)
+        await self._clipboard.sgk_clear_primary()
+        await self._sgk_switch_layout(layout_after)
+        await self._sgk_restore(saved_clipboard)
+        self._sgk_log_convert(layout_before, layout_after, len(text), terminal=True)
+
+    def _sgk_prepare(self, text: str) -> tuple[str, str, str] | None:
         if not SgkClipboard.sgk_is_text_safe(text, self._max_length):
             _logger.debug("sgk_text_unsafe", extra={"len": len(text)})
-            await self._sgk_restore(saved_clipboard)
-            return
+            return None
 
         layout_before, layout_after = self._sgk_pick_direction(text)
-
         if not self._mapper.sgk_has_map(layout_before, layout_after):
             _logger.warning(
                 "sgk_no_map", extra={"from": layout_before, "to": layout_after}
             )
-            await self._sgk_restore(saved_clipboard)
-            return
+            return None
 
         converted = self._mapper.sgk_convert(text, layout_before, layout_after)
         if converted == text:
             _logger.debug("sgk_no_change_after_convert")
-            await self._sgk_restore(saved_clipboard)
-            return
-
-        await self._clipboard.sgk_type_text(converted, terminal=terminal)
-        await self._sgk_switch_layout(layout_after)
-        await self._sgk_restore(saved_clipboard)
-        self._sgk_log_convert(layout_before, layout_after, len(text), terminal=False)
+            return None
+        return converted, layout_before, layout_after
 
     def _sgk_log_convert(
         self, layout_before: str, layout_after: str, char_count: int, terminal: bool
@@ -156,64 +214,6 @@ class SgkTextProcessor:
                 "terminal": terminal,
             },
         )
-
-    async def _sgk_do_process_terminal(self) -> None:
-        """Terminal flow: erase the mistyped text and paste the fixed text.
-
-        Real terminals have no editable selection and no 'replace on paste', and
-        Ctrl+Insert / Ctrl+Shift+Left mean different things per terminal. So:
-        take the text from the mouse selection (PRIMARY), Backspace over it, then
-        paste the converted text with the configured terminal paste shortcut.
-
-        Assumes the mistyped text is at the end of the current input line (you
-        typed it, noticed, selected it, hit the hotkey).
-        """
-        if self._sgk_sensitive():
-            return
-
-        saved_clipboard = await self._clipboard.sgk_get()
-
-        raw = await self._clipboard.sgk_get_primary()
-        if not raw or not raw.strip():
-            _logger.info("sgk_terminal_no_selection")
-            await self._sgk_restore(saved_clipboard)
-            return
-
-        text = raw.strip()
-        if "\n" in text:
-            # A multi-line selection means the mouse grabbed rendered screen
-            # text (scrollback, another pane), not the current input token.
-            _logger.warning("sgk_terminal_multiline_selection", extra={"len": len(text)})
-            await self._sgk_restore(saved_clipboard)
-            return
-
-        if not SgkClipboard.sgk_is_text_safe(text, self._max_length):
-            _logger.debug("sgk_text_unsafe", extra={"len": len(text)})
-            await self._sgk_restore(saved_clipboard)
-            return
-
-        layout_before, layout_after = self._sgk_pick_direction(text)
-        if not self._mapper.sgk_has_map(layout_before, layout_after):
-            _logger.warning(
-                "sgk_no_map", extra={"from": layout_before, "to": layout_after}
-            )
-            await self._sgk_restore(saved_clipboard)
-            return
-
-        converted = self._mapper.sgk_convert(text, layout_before, layout_after)
-        if converted == text:
-            _logger.debug("sgk_no_change_after_convert")
-            await self._sgk_restore(saved_clipboard)
-            return
-
-        if not await self._sgk_terminal_erase(text):
-            await self._sgk_restore(saved_clipboard)
-            return
-
-        await self._clipboard.sgk_paste_text(converted, self._terminal_paste_combo)
-        await self._sgk_switch_layout(layout_after)
-        await self._sgk_restore(saved_clipboard)
-        self._sgk_log_convert(layout_before, layout_after, len(text), terminal=True)
 
     async def _sgk_terminal_erase(self, text: str) -> bool:
         """Erase `text` from the terminal input line. Returns False to abort.
@@ -237,7 +237,7 @@ class SgkTextProcessor:
         elif mode == "word":
             for _ in range(text.count(" ") + text.count("\t") + 1):
                 await self._clipboard.sgk_send_key("ctrl+w")
-        else:  # "line"
+        else:
             await self._clipboard.sgk_send_key("ctrl+a")
             await self._clipboard.sgk_send_key("ctrl+k")
         return True
@@ -267,10 +267,12 @@ class SgkTextProcessor:
         """Get the text to convert.
 
         PRIMARY persists the last mouse selection forever on Linux, so it cannot
-        tell us whether something is selected *now*. Instead we force the current
-        selection into the CLIPBOARD with a copy shortcut and see whether it
-        changed. If not, nothing is selected → (optionally) select the last word
-        ourselves.
+        tell us whether something is selected *now*. Instead a private marker is
+        put on the CLIPBOARD, the selection is copied over it with a copy
+        shortcut, and the clipboard is read back: still the marker means nothing
+        is selected, so (optionally) select the last word ourselves. Comparing
+        against a marker rather than the saved clipboard matters when the user
+        selects exactly what they copied a moment ago.
 
         `force_word=True` (the "convert last word" hotkey) skips the "is
         something already selected?" check and always selects the last word.
@@ -278,9 +280,12 @@ class SgkTextProcessor:
         The copy shortcut is Ctrl+Insert, not Ctrl+C: in a terminal Ctrl+C is
         SIGINT and would kill the foreground program.
         """
+        marker = f"sgk-wordwrap-{uuid.uuid4().hex}"
+        baseline = marker if await self._clipboard.sgk_set(marker) else saved_clipboard
+
         if not force_word:
             text = await self._sgk_copy_selection()
-            if text and text.strip() and text != saved_clipboard:
+            if self._sgk_is_fresh(text, baseline):
                 _logger.debug("sgk_acquired_via_selection", extra={"len": len(text)})
                 return text
             if not self._fallback_to_word:
@@ -289,10 +294,14 @@ class SgkTextProcessor:
         await self._clipboard.sgk_send_key("ctrl+shift+Left")
         await asyncio.sleep(0.12)
         text = await self._sgk_copy_selection()
-        if text and text.strip() and text != saved_clipboard:
+        if self._sgk_is_fresh(text, baseline):
             _logger.debug("sgk_acquired_via_word_selection", extra={"len": len(text)})
             return text
         return None
+
+    @staticmethod
+    def _sgk_is_fresh(text: str | None, baseline: str | None) -> bool:
+        return bool(text and text.strip() and text != baseline)
 
     async def _sgk_copy_selection(self) -> str | None:
         """Copy the current selection into CLIPBOARD (Ctrl+Insert) and read it."""
@@ -329,7 +338,11 @@ class SgkTextProcessor:
             },
         )
 
-    async def _sgk_restore(self, saved: str | None) -> None:
-        if saved is not None:
-            await asyncio.sleep(0.05)
+    async def _sgk_restore(self, saved: str | None, force: bool = False) -> None:
+        if not force and not self._restore_clipboard:
+            return
+        await asyncio.sleep(0.05)
+        if saved is None:
+            await self._clipboard.sgk_clear()
+        else:
             await self._clipboard.sgk_set(saved)
