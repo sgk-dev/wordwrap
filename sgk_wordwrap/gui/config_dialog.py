@@ -4,7 +4,7 @@ A tabbed PyQt6 QDialog:
   - General  (interface language, launch on login, monochrome tray icon)
   - Hotkeys
   - Blacklist (blocked processes)
-  - Behavior
+  - Behavior (word fallback, clipboard restore, delays, terminal paste / erase)
 """
 
 from __future__ import annotations
@@ -179,6 +179,13 @@ class SgkConfigDialog:
         term_paste_combo.setCurrentText(cur_combo)
         beh_layout.addRow(self._tr("cfg.beh.terminal_paste"), term_paste_combo)
 
+        term_erase_combo = QComboBox()
+        for mode in ("line", "word", "backspace"):
+            term_erase_combo.addItem(self._tr(f"cfg.beh.erase.{mode}"), mode)
+        erase_idx = term_erase_combo.findData(behavior.get("terminal_erase", "line"))
+        term_erase_combo.setCurrentIndex(erase_idx if erase_idx >= 0 else 0)
+        beh_layout.addRow(self._tr("cfg.beh.terminal_erase"), term_erase_combo)
+
         tabs.addTab(beh_tab, self._tr("cfg.tab.behavior"))
 
         # ---- Buttons ----
@@ -212,6 +219,7 @@ class SgkConfigDialog:
                 "restore_clipboard": restore_cb.isChecked(),
                 "action_delay_ms": delay_spin.value(),
                 "terminal_paste_combo": term_paste_combo.currentText().strip(),
+                "terminal_erase": term_erase_combo.currentData() or "line",
             })
 
             sgk_set_autostart(autostart_cb.isChecked())

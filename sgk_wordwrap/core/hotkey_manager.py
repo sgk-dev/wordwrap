@@ -44,6 +44,7 @@ class SgkHotkeyManager:
         self._toggle_handler: Callable[[], None] | None = None
         self._last_trigger: dict[str, float] = {}
         self._paused = False
+        self._listening = False
         self._lock = threading.Lock()
 
     # -- wiring ------------------------------------------------------
@@ -72,12 +73,14 @@ class SgkHotkeyManager:
             )
             return
         self._backend.sgk_start(self._sgk_on_hotkey_raw)
+        self._listening = True
         _logger.info(
             "sgk_hotkey_manager_started",
             extra={"hotkeys": self._hotkeys, "display": sgk_detect_display_server()},
         )
 
     def sgk_stop(self) -> None:
+        self._listening = False
         if self._backend:
             self._backend.sgk_stop()
         _logger.info("sgk_hotkey_manager_stopped")
@@ -96,6 +99,9 @@ class SgkHotkeyManager:
 
     def sgk_is_paused(self) -> bool:
         return self._paused
+
+    def sgk_is_listening(self) -> bool:
+        return self._listening
 
     # -- dispatch -------------------------------------------------
 

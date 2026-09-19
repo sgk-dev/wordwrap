@@ -242,6 +242,9 @@ class SgkApp:
             )
             self._tray.sgk_create()
             self._tray.sgk_set_paused(_is_paused())
+            self._tray.sgk_set_hotkeys_available(
+                bool(self._hotkey_manager and self._hotkey_manager.sgk_is_listening())
+            )
 
             _logger.info("sgk_gui_started")
 

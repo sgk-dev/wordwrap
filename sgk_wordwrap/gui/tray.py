@@ -135,6 +135,7 @@ class SgkTrayIcon:
         self._quit_action = None
         self._state_timer = None
         self._paused = False
+        self._hotkeys_available = True
 
     def sgk_create(self) -> None:
         """Build and show the tray icon. Must be called from the Qt thread."""
@@ -144,7 +145,7 @@ class SgkTrayIcon:
             self._tray = QSystemTrayIcon(
                 _sgk_make_icon(paused=False, style=self._icon_style)
             )
-            self._tray.setToolTip(sgk_tr("tray.tooltip", self._lang))
+            self._tray.setToolTip(self._sgk_tooltip())
 
             def _on_activated(reason) -> None:
                 if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -215,10 +216,19 @@ class SgkTrayIcon:
                 self._tray.setIcon(
                     _sgk_make_icon(paused=paused, style=self._icon_style)
                 )
-                key = "tray.tooltip_paused" if paused else "tray.tooltip"
-                self._tray.setToolTip(sgk_tr(key, self._lang))
+                self._tray.setToolTip(self._sgk_tooltip())
             except Exception:
                 pass
+
+    def sgk_set_hotkeys_available(self, available: bool) -> None:
+        self._hotkeys_available = available
+        if self._tray:
+            self._tray.setToolTip(self._sgk_tooltip())
+
+    def _sgk_tooltip(self) -> str:
+        if not self._hotkeys_available:
+            return sgk_tr("tray.tooltip_no_hotkeys", self._lang)
+        return sgk_tr("tray.tooltip_paused" if self._paused else "tray.tooltip", self._lang)
 
     def sgk_show_message(self, title: str, message: str, duration_ms: int = 3000) -> None:
         if self._tray:

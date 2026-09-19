@@ -22,6 +22,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     "tray.quit": {"en": "Quit", "ru": "Выход"},
     "tray.tooltip": {"en": "WordWrap", "ru": "WordWrap"},
     "tray.tooltip_paused": {"en": "WordWrap - paused", "ru": "WordWrap - выключено"},
+    "tray.tooltip_no_hotkeys": {
+        "en": "WordWrap - hotkeys unavailable: add yourself to the 'input' group and log in again",
+        "ru": "WordWrap - горячие клавиши недоступны: добавьте себя в группу 'input' и перезайдите",
+    },
     # ---- about dialog ----
     "about.title": {"en": "About WordWrap", "ru": "О программе WordWrap"},
     "about.tagline": {
@@ -86,6 +90,22 @@ _STRINGS: dict[str, dict[str, str]] = {
     "cfg.beh.terminal_paste": {
         "en": "Terminal paste shortcut:",
         "ru": "Вставка в терминал:",
+    },
+    "cfg.beh.terminal_erase": {
+        "en": "Terminal: how to erase the old text:",
+        "ru": "Терминал: как стирать старый текст:",
+    },
+    "cfg.beh.erase.line": {
+        "en": "Clear the whole input line (Ctrl+A, Ctrl+K)",
+        "ru": "Очистить всю строку ввода (Ctrl+A, Ctrl+K)",
+    },
+    "cfg.beh.erase.word": {
+        "en": "Delete word by word (Ctrl+W)",
+        "ru": "Удалять по словам (Ctrl+W)",
+    },
+    "cfg.beh.erase.backspace": {
+        "en": "Backspace per character",
+        "ru": "Backspace по символам",
     },
     "cfg.saved": {
         "en": "Settings saved.",
