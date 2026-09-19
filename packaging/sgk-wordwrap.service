@@ -1,5 +1,5 @@
 [Unit]
-Description=SGK WordWrap - automatic keyboard layout switcher
+Description=WordWrap - keyboard layout fixer
 Documentation=https://github.com/sgk-dev/wordwrap
 After=graphical-session.target
 PartOf=graphical-session.target
@@ -14,7 +14,6 @@ RestartSec=3s
 # Session environment. install.sh also runs `systemctl --user import-environment`
 # so WAYLAND_DISPLAY / DBUS_SESSION_BUS_ADDRESS are populated for the unit.
 Environment=PYTHONUNBUFFERED=1
-Environment=DISPLAY=:0
 PassEnvironment=WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DBUS_SESSION_BUS_ADDRESS
 
 # Resource limits - keep the daemon lightweight

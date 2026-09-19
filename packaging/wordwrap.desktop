@@ -10,5 +10,3 @@ Keywords=keyboard;layout;switch;punto;russian;
 Terminal=false
 NoDisplay=false
 StartupNotify=false
-X-GNOME-Autostart-enabled=true
-X-GNOME-Autostart-Delay=3

@@ -25,7 +25,7 @@ _AUTOSTART_EXTRA = "X-GNOME-Autostart-enabled=true\nX-GNOME-Autostart-Delay=3\n"
 
 _SYSTEMD_UNIT = """\
 [Unit]
-Description=WordWrap - keyboard layout switcher
+Description=WordWrap - keyboard layout fixer
 Documentation=https://github.com/sgk-dev/wordwrap
 After=graphical-session.target
 PartOf=graphical-session.target

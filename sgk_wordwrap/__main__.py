@@ -22,7 +22,6 @@ _ICON_DST = (
     Path.home()
     / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps" / "wordwrap.png"
 )
-_AUTOSTART_DST = Path.home() / ".config" / "autostart" / "wordwrap.desktop"
 _SERVICE_DST = Path.home() / ".config" / "systemd" / "user" / "sgk-wordwrap.service"
 
 
@@ -50,7 +49,7 @@ def _sgk_parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--install-service",
         action="store_true",
-        help="Install the systemd user service + autostart + menu entry and exit",
+        help="Install the systemd user service and the menu entry, then exit",
     )
     parser.add_argument(
         "--no-gui",
@@ -92,14 +91,7 @@ def _sgk_install_desktop() -> None:
 def _sgk_install_service() -> None:
     _sgk_install_desktop()
 
-    for dst in (_SERVICE_DST, _AUTOSTART_DST):
-        dst.parent.mkdir(parents=True, exist_ok=True)
-
-    _AUTOSTART_DST.write_text(
-        sgk_desktop_entry(_sgk_exec_cmd(), autostart=True), encoding="utf-8"
-    )
-    print(f"Installed: {_AUTOSTART_DST}")
-
+    _SERVICE_DST.parent.mkdir(parents=True, exist_ok=True)
     _SERVICE_DST.write_text(sgk_systemd_unit(_sgk_exec_cmd()), encoding="utf-8")
     print(f"Installed: {_SERVICE_DST}")
     print("Enable with: systemctl --user enable --now sgk-wordwrap")
