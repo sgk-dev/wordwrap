@@ -26,8 +26,6 @@ _SGK_DEFAULT_CONFIG: dict[str, Any] = {
         "toggle": "ctrl+pause",
     },
     "layouts": {
-        "active": ["en", "ru"],
-        "cycle": True,
         "custom_maps_dir": None,
     },
     "blacklist": {
@@ -56,9 +54,7 @@ _SGK_DEFAULT_CONFIG: dict[str, Any] = {
     "behavior": {
         "enabled_on_start": True,
         "fallback_to_word_on_no_selection": True,
-        "word_boundary_chars": " \t\n.,;:!?()[]{}\"'",
         "restore_clipboard": True,
-        "clipboard_read_timeout_ms": 200,
         "action_delay_ms": 50,
         "clipboard_settle_ms": 80,
         "paste_settle_ms": 80,

@@ -29,10 +29,13 @@ class TestDefaults:
         data = config.sgk_load()
         assert "keepassxc" in data["blacklist"]["processes"]
 
-    def test_default_layouts(self, config: SgkConfig) -> None:
+    def test_default_layouts_section(self, config: SgkConfig) -> None:
         data = config.sgk_load()
-        assert "en" in data["layouts"]["active"]
-        assert "ru" in data["layouts"]["active"]
+        assert data["layouts"] == {"custom_maps_dir": None}
+
+    def test_default_restore_clipboard(self, config: SgkConfig) -> None:
+        data = config.sgk_load()
+        assert data["behavior"]["restore_clipboard"] is True
 
     def test_default_behavior_fallback_true(self, config: SgkConfig) -> None:
         data = config.sgk_load()
