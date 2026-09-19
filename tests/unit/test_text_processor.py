@@ -39,6 +39,7 @@ def _make_processor(
     terminal_erase: str = "line",
     set_ok: bool = True,
     copy_settle_ms: int = 0,
+    modifiers_held=None,
 ) -> SgkTextProcessor:
     clipboard = MagicMock(spec=SgkClipboard)
     state = {"last_set": None}
@@ -95,6 +96,7 @@ def _make_processor(
         layout_settle_ms=0,
         terminal_settle_ms=0,
         terminal_erase=terminal_erase,
+        modifiers_held=modifiers_held,
     )
 
 
@@ -280,7 +282,7 @@ async def test_direction_falls_back_to_current_layout_when_undetectable() -> Non
 
 @pytest.mark.asyncio
 async def test_no_selection_falls_back_to_word() -> None:
-    p = _make_processor(get_returns=["orig", MARKER, "wordtext"], converted="WT_RU")
+    p = _make_processor(get_returns=["orig", MARKER, MARKER, "wordtext"], converted="WT_RU")
     await p.sgk_process()
     assert "ctrl+shift+Left" in _sent_keys(p)
     p._clipboard.sgk_paste_text.assert_called_once_with("WT_RU", "ctrl+v")
@@ -288,7 +290,7 @@ async def test_no_selection_falls_back_to_word() -> None:
 
 @pytest.mark.asyncio
 async def test_no_selection_no_fallback_is_noop() -> None:
-    p = _make_processor(get_returns=["orig", MARKER], fallback_to_word=False)
+    p = _make_processor(get_returns=["orig", MARKER, MARKER], fallback_to_word=False)
     await p.sgk_process()
     p._clipboard.sgk_paste_text.assert_not_called()
     p._layout_manager.sgk_switch_to.assert_not_called()
@@ -297,7 +299,7 @@ async def test_no_selection_no_fallback_is_noop() -> None:
 
 @pytest.mark.asyncio
 async def test_marker_write_failure_falls_back_to_saved_comparison() -> None:
-    p = _make_processor(get_returns=["orig", "orig", "wordtext"], set_ok=False)
+    p = _make_processor(get_returns=["orig", "orig", "orig", "wordtext"], set_ok=False)
     await p.sgk_process()
     assert "ctrl+shift+Left" in _sent_keys(p)
     p._clipboard.sgk_paste_text.assert_called_once()
@@ -315,7 +317,7 @@ async def test_sensitive_context_skipped_without_touching_clipboard() -> None:
 
 @pytest.mark.asyncio
 async def test_no_text_acquired_skipped() -> None:
-    p = _make_processor(get_returns=["orig", MARKER, MARKER])
+    p = _make_processor(get_returns=["orig", MARKER, MARKER, MARKER])
     await p.sgk_process()
     p._layout_manager.sgk_switch_to.assert_not_called()
 
@@ -365,7 +367,7 @@ async def test_restore_disabled_keeps_converted_text_in_clipboard() -> None:
 
 @pytest.mark.asyncio
 async def test_restore_disabled_still_cleans_up_after_abort() -> None:
-    p = _make_processor(get_returns=["MY_SAVED", MARKER, MARKER], restore_clipboard=False)
+    p = _make_processor(get_returns=["MY_SAVED", MARKER, MARKER, MARKER], restore_clipboard=False)
     await p.sgk_process()
     assert _set_values(p)[-1] == "MY_SAVED"
 
@@ -390,3 +392,29 @@ async def test_slow_app_clipboard_is_polled_until_it_changes() -> None:
     assert "ctrl+shift+Left" not in _sent_keys(p)
     p._clipboard.sgk_paste_text.assert_called_once_with("привет", "ctrl+v")
     assert p._clipboard.sgk_get.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_copy_is_retried_before_word_fallback() -> None:
+    p = _make_processor(get_returns=["orig", MARKER, "ghbdtn"], converted="привет")
+    await p.sgk_process()
+    keys = _sent_keys(p)
+    assert keys.count("ctrl+insert") == 2
+    assert "ctrl+shift+Left" not in keys
+    p._clipboard.sgk_paste_text.assert_called_once_with("привет", "ctrl+v")
+
+
+@pytest.mark.asyncio
+async def test_waits_for_physical_modifiers_to_be_released() -> None:
+    held = {"n": 3}
+
+    def modifiers_held() -> bool:
+        held["n"] -= 1
+        return held["n"] > 0
+
+    p = _make_processor(
+        get_returns=["orig", "ghbdtn"], converted="привет", modifiers_held=modifiers_held
+    )
+    await p.sgk_process()
+    assert held["n"] <= 0
+    p._clipboard.sgk_paste_text.assert_called_once()

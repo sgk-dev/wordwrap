@@ -103,6 +103,9 @@ class SgkHotkeyManager:
     def sgk_is_listening(self) -> bool:
         return self._listening
 
+    def sgk_modifiers_held(self) -> bool:
+        return bool(self._backend and self._backend.sgk_modifiers_held())
+
     # -- dispatch -------------------------------------------------
 
     def _sgk_debounced(self, name: str) -> bool:

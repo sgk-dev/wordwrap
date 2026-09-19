@@ -104,12 +104,13 @@ class SgkApp:
             fallback_to_word=behavior.get("fallback_to_word_on_no_selection", True),
             restore_clipboard=behavior.get("restore_clipboard", True),
             settle_ms=behavior.get("hotkey_settle_ms", 150),
-            copy_settle_ms=behavior.get("copy_settle_ms", 400),
+            copy_settle_ms=behavior.get("copy_settle_ms", 300),
             layout_settle_ms=behavior.get("layout_settle_ms", 60),
             terminal_paste_combo=behavior.get("terminal_paste_combo", "ctrl+shift+v"),
             terminal_erase=behavior.get("terminal_erase", "line"),
             terminal_settle_ms=behavior.get("terminal_settle_ms", 300),
             terminal_max_backspaces=behavior.get("terminal_max_backspaces", 200),
+            modifiers_held=self._hotkey_manager.sgk_modifiers_held,
         )
         self._layout_manager = layout_manager
 

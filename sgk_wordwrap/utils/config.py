@@ -58,7 +58,7 @@ _SGK_DEFAULT_CONFIG: dict[str, Any] = {
         "action_delay_ms": 50,
         "clipboard_settle_ms": 150,
         "paste_settle_ms": 100,
-        "copy_settle_ms": 400,
+        "copy_settle_ms": 300,
         "hotkey_settle_ms": 150,
         "layout_settle_ms": 60,
         "max_text_length": 10000,

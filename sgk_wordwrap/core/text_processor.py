@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from typing import Callable
 
 from sgk_wordwrap.core.layout_manager import SgkLayoutManager
 from sgk_wordwrap.input.clipboard import SgkClipboard
@@ -36,6 +37,8 @@ _logger = sgk_get_logger(__name__)
 
 _PASTE_COMBO = "ctrl+v"
 _COPY_POLL_S = 0.04
+_MODIFIER_RELEASE_MAX_S = 0.6
+_COPY_ATTEMPTS = 2
 
 
 class SgkTextProcessor:
@@ -51,12 +54,13 @@ class SgkTextProcessor:
         fallback_to_word: bool = True,
         restore_clipboard: bool = True,
         settle_ms: int = 150,
-        copy_settle_ms: int = 400,
+        copy_settle_ms: int = 300,
         layout_settle_ms: int = 60,
         terminal_paste_combo: str = "ctrl+shift+v",
         terminal_erase: str = "line",
         terminal_settle_ms: int = 300,
         terminal_max_backspaces: int = 200,
+        modifiers_held: Callable[[], bool] | None = None,
     ) -> None:
         self._clipboard = clipboard
         self._layout_manager = layout_manager
@@ -72,6 +76,7 @@ class SgkTextProcessor:
         self._terminal_erase = terminal_erase
         self._terminal_settle = terminal_settle_ms / 1000.0
         self._terminal_max_backspaces = terminal_max_backspaces
+        self._modifiers_held = modifiers_held
         self._busy = False
 
     async def sgk_process(self, mode: str = "convert") -> None:
@@ -89,9 +94,11 @@ class SgkTextProcessor:
         try:
             if mode == "convert_terminal":
                 await asyncio.sleep(self._terminal_settle)
+                await self._sgk_wait_modifiers_released()
                 await self._sgk_do_process_terminal()
             else:
                 await asyncio.sleep(self._settle)
+                await self._sgk_wait_modifiers_released()
                 await self._sgk_do_process(last_word=mode == "convert_last_word")
         except Exception as exc:
             _logger.error("sgk_process_unexpected_error", extra={"error": str(exc)})
@@ -100,6 +107,19 @@ class SgkTextProcessor:
             _logger.debug(
                 "sgk_process_done",
                 extra={"latency_ms": round((time.monotonic() - t_start) * 1000)},
+            )
+
+    async def _sgk_wait_modifiers_released(self) -> None:
+        if self._modifiers_held is None:
+            return
+        t0 = time.monotonic()
+        while self._modifiers_held() and time.monotonic() - t0 < _MODIFIER_RELEASE_MAX_S:
+            await asyncio.sleep(0.02)
+        waited = round((time.monotonic() - t0) * 1000)
+        if waited:
+            _logger.debug(
+                "sgk_waited_for_modifier_release",
+                extra={"wait_ms": waited, "still_held": bool(self._modifiers_held())},
             )
 
     def _sgk_sensitive(self) -> bool:
@@ -285,10 +305,11 @@ class SgkTextProcessor:
         baseline = marker if await self._clipboard.sgk_set(marker) else saved_clipboard
 
         if not force_word:
-            text = await self._sgk_copy_selection(baseline)
-            if self._sgk_is_fresh(text, baseline):
-                _logger.debug("sgk_acquired_via_selection", extra={"len": len(text)})
-                return text
+            for _ in range(_COPY_ATTEMPTS):
+                text = await self._sgk_copy_selection(baseline)
+                if self._sgk_is_fresh(text, baseline):
+                    _logger.debug("sgk_acquired_via_selection", extra={"len": len(text)})
+                    return text
             if not self._fallback_to_word:
                 return None
 

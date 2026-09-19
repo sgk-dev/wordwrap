@@ -91,6 +91,7 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
         self._thread: threading.Thread | None = None
         self._running = False
         self._stop_pipe: tuple[int, int] | None = None
+        self._pressed_mods: set[str] = set()
 
     # -- SgkInputBackend ------------------------------------------------
 
@@ -113,6 +114,9 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
             except Exception:
                 pass
         return len(kbds) > 0
+
+    def sgk_modifiers_held(self) -> bool:
+        return bool(self._pressed_mods)
 
     def sgk_start(self, on_hotkey: Callable[[str], None]) -> None:
         self._callback = on_hotkey
@@ -205,7 +209,8 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
                 _logger.error("sgk_evdev_no_valid_hotkeys")
                 return
 
-            pressed_mods: set[str] = set()
+            pressed_mods = self._pressed_mods
+            pressed_mods.clear()
             stop_r = self._stop_pipe[0] if self._stop_pipe else None
             fds: dict[int, object] = {dev.fd: dev for dev in keyboards}
             if stop_r is not None:
