@@ -11,6 +11,7 @@ Select the mistyped text, press **Ctrl+F1**:
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-GNOME%20Wayland-e95420)
+![PyPI](https://img.shields.io/pypi/v/sgk-wordwrap?label=pypi)
 ![License](https://img.shields.io/badge/license-GPLv3-blue)
 ![Tests](https://img.shields.io/badge/tests-128%20passing-brightgreen)
 
@@ -94,14 +95,17 @@ Language and icon-style changes apply immediately; hotkey changes need a restart
 Requires `wl-clipboard`, `python3-pyqt6`, `python3-evdev` and membership in the `input`
 group (for the evdev listener and the uinput virtual keyboard).
 
-**With pipx:**
+**With pipx (from PyPI):**
 
 ```bash
 sudo apt install wl-clipboard python3-pyqt6 python3-evdev pipx
 sudo usermod -aG input "$USER"          # then log out and back in once
-pipx install --system-site-packages git+https://github.com/sgk-dev/wordwrap
+pipx install --system-site-packages sgk-wordwrap
 sgk-wordwrap --install-desktop          # adds WordWrap to the applications menu
 ```
+
+The latest development version comes straight from GitHub instead:
+`pipx install --system-site-packages git+https://github.com/sgk-dev/wordwrap`.
 
 Then open the GNOME activities overview, search for **WordWrap** and launch it. Turn on
 **Launch on login** in Settings if you want it to start with your session.

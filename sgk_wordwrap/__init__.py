@@ -1,6 +1,6 @@
 """sgk-wordwrap: automatic keyboard layout switcher for Linux."""
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 __author__ = "SGK"
 __email__ = "sidash.seo@gmail.com"
 
