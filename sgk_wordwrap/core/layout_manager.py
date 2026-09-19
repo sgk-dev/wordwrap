@@ -50,8 +50,11 @@ def _sgk_parse_gsettings_sources(raw: str) -> list[str]:
     Only ``xkb`` entries are kept; layout variants (``ru+phonetic``) are reduced
     to the base name. Returns [] on parse failure.
     """
+    body = raw.strip()
+    if body.startswith("@"):
+        body = body.split(" ", 1)[1] if " " in body else ""
     try:
-        sources = ast.literal_eval(raw)
+        sources = ast.literal_eval(body)
     except (ValueError, SyntaxError):
         return []
     result: list[str] = []
@@ -147,15 +150,29 @@ class _SgkSetxkbmap:
 
 
 class _SgkGsettings:
-    """GNOME Wayland: gsettings org.gnome.desktop.input-sources."""
+    """GNOME Wayland: gsettings org.gnome.desktop.input-sources.
+
+    GNOME Shell keeps ``mru-sources`` (most recently used first) up to date on
+    every real switch, while ``current`` is neither read nor written by the
+    Shell in a live session - so ``mru-sources`` is the source of truth and
+    ``current`` is only a fallback for fresh sessions where MRU is still empty.
+    """
+
+    def _get(self, key: str) -> str:
+        return subprocess.check_output(
+            ["gsettings", "get", "org.gnome.desktop.input-sources", key],
+            text=True, timeout=1.0,
+        )
 
     def get_current(self) -> str:
         try:
-            raw = subprocess.check_output(
-                ["gsettings", "get", "org.gnome.desktop.input-sources", "current"],
-                text=True, timeout=1.0,
-            )
-            idx = _sgk_parse_gsettings_current(raw)
+            mru = _sgk_parse_gsettings_sources(self._get("mru-sources"))
+            if mru:
+                return mru[0]
+        except Exception:
+            pass
+        try:
+            idx = _sgk_parse_gsettings_current(self._get("current"))
             all_layouts = self.get_all()
             if idx < len(all_layouts):
                 return all_layouts[idx]
@@ -165,11 +182,7 @@ class _SgkGsettings:
 
     def get_all(self) -> list[str]:
         try:
-            raw = subprocess.check_output(
-                ["gsettings", "get", "org.gnome.desktop.input-sources", "sources"],
-                text=True, timeout=1.0,
-            )
-            parsed = _sgk_parse_gsettings_sources(raw)
+            parsed = _sgk_parse_gsettings_sources(self._get("sources"))
             if parsed:
                 return parsed
         except Exception:

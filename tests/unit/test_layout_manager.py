@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from sgk_wordwrap.core.layout_manager import (
     _sgk_normalize,
     _sgk_parse_gsettings_current,
     _sgk_parse_gsettings_sources,
+    _SgkGsettings,
 )
 
 
@@ -41,6 +44,38 @@ class TestParseSources:
 
     def test_garbage_returns_empty(self) -> None:
         assert _sgk_parse_gsettings_sources("not a list") == []
+
+    def test_typed_empty_array(self) -> None:
+        assert _sgk_parse_gsettings_sources("@a(ss) []") == []
+
+    def test_typed_array_with_items(self) -> None:
+        assert _sgk_parse_gsettings_sources("@a(ss) [('xkb', 'ru')]") == ["ru"]
+
+
+class TestGsettingsCurrent:
+    @pytest.fixture
+    def backend(self, monkeypatch: pytest.MonkeyPatch):
+        values = {
+            "sources": "[('xkb', 'us'), ('xkb', 'ru')]",
+            "current": "uint32 1",
+            "mru-sources": "[('xkb', 'us'), ('xkb', 'ru')]",
+        }
+        b = _SgkGsettings()
+        monkeypatch.setattr(b, "_get", lambda key: values[key])
+        b._values = values  # type: ignore[attr-defined]
+        return b
+
+    def test_mru_wins_over_stale_current(self, backend: _SgkGsettings) -> None:
+        assert backend.get_current() == "us"
+
+    def test_falls_back_to_current_when_mru_empty(self, backend: _SgkGsettings) -> None:
+        backend._values["mru-sources"] = "@a(ss) []"
+        assert backend.get_current() == "ru"
+
+    def test_current_out_of_range_defaults_en(self, backend: _SgkGsettings) -> None:
+        backend._values["mru-sources"] = "@a(ss) []"
+        backend._values["current"] = "uint32 7"
+        assert backend.get_current() == "en"
 
 
 class TestNormalize:

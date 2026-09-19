@@ -12,7 +12,7 @@ Select the mistyped text, press **Ctrl+F1**:
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-GNOME%20Wayland-e95420)
 ![License](https://img.shields.io/badge/license-GPLv3-blue)
-![Tests](https://img.shields.io/badge/tests-120%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-125%20passing-brightgreen)
 
 </div>
 
@@ -50,14 +50,18 @@ only when you press the hotkey.
    built in). The direction comes from the text itself, not from the active layout.
 4. The result is pasted back via clipboard + synthetic **Ctrl+V** - `wtype` is not
    supported by Mutter, so this is the reliable path.
-5. The system layout is switched via `gsettings`, with the GNOME `Super+Space` shortcut
-   as a fallback when the setting does not take effect.
+5. The system layout is switched via `gsettings`; the real state is read back from
+   GNOME's `mru-sources`, and if the switch did not take effect the GNOME `Super+Space`
+   shortcut is pressed as a fallback.
 6. Your clipboard is restored.
 
 **Terminal mode** (`Ctrl+Shift+F1`) is different: it takes the mouse selection, clears
 the whole readline input line (`Ctrl+A`, `Ctrl+K` - `Ctrl+Y` brings it back) and pastes
 the fixed text with `Ctrl+Shift+V`. It assumes the mistyped text is the current input
-line; full-screen TUIs (vim, tmux, htop) are not supported.
+line. For TUI prompts that do not understand `Ctrl+A` / `Ctrl+K` (Claude Code, some
+REPLs) switch Settings -> Behavior -> *Terminal: how to erase the old text* to
+**Backspace per character** and keep the cursor at the end of the mistyped text.
+Full-screen TUIs (vim, tmux, htop) are not supported.
 
 ## Hotkeys
 
