@@ -85,7 +85,7 @@ right-click opens the menu:
 - **Enabled / Paused** - toggle conversion
 - **Settings...** - language, launch-on-login, monochrome icon, hotkeys, excluded
   programs, behavior (word fallback, clipboard restore, terminal paste / erase mode)
-- **About** - version, author, links to star or support the project
+- **About** - version, author, link to star the project
 - **Quit**
 
 Language and icon-style changes apply immediately; hotkey changes need a restart.
@@ -182,8 +182,7 @@ Point `layouts.custom_maps_dir` at a folder and drop JSON files into it:
 
 ## Support the project
 
-If WordWrap saves you time, a **star on GitHub** or a small donation via
-[GitHub Sponsors](https://github.com/sponsors/sgk-dev) helps a lot.
+If WordWrap saves you time, a **star on GitHub** helps a lot.
 
 ## License
 

@@ -3,7 +3,7 @@
 PyQt6 QSystemTrayIcon with a context menu:
   - Enable / disable toggle (also on left-click)
   - Settings...
-  - About  (author, version, GitHub / donate links)
+  - About  (author, version, GitHub link)
   - Quit
 
 Menu items carry monochrome (symbolic) theme icons. The tray icon itself comes
@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from sgk_wordwrap import SGK_DONATE_URL, SGK_GITHUB_URL, __author__, __version__
+from sgk_wordwrap import SGK_GITHUB_URL, __author__, __version__
 from sgk_wordwrap.gui.i18n import sgk_normalize_lang, sgk_tr
 from sgk_wordwrap.utils.logger import sgk_get_logger
 
@@ -365,12 +365,7 @@ class SgkTrayIcon:
             star_btn.clicked.connect(
                 lambda: QDesktopServices.openUrl(QUrl(SGK_GITHUB_URL))
             )
-            donate_btn = QPushButton(sgk_tr("about.donate", lang))
-            donate_btn.clicked.connect(
-                lambda: QDesktopServices.openUrl(QUrl(SGK_DONATE_URL))
-            )
             links.addWidget(star_btn)
-            links.addWidget(donate_btn)
             layout.addLayout(links)
 
             signature = QLabel("Developed by SGK with ❤️")
