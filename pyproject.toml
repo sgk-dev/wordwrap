@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sgk-wordwrap"
-version = "0.3.1"
+dynamic = ["version"]
 description = "Fix text typed in the wrong keyboard layout - Linux, GNOME Wayland"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
 authors = [{name = "SGK", email = "sidash.seo@gmail.com"}]
 requires-python = ">=3.10"
-keywords = ["keyboard", "layout", "xkb", "linux", "x11", "wayland", "input"]
+keywords = ["keyboard", "layout", "xkb", "linux", "gnome", "wayland", "punto"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: X11 Applications",
@@ -30,7 +30,6 @@ dependencies = [
 
 [project.optional-dependencies]
 x11 = ["python-xlib>=0.33"]
-atspi = ["pyatspi>=2.38"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
@@ -46,6 +45,9 @@ sgk-wordwrap = "sgk_wordwrap.__main__:main"
 Homepage = "https://github.com/sgk-dev/wordwrap"
 Repository = "https://github.com/sgk-dev/wordwrap"
 "Bug Tracker" = "https://github.com/sgk-dev/wordwrap/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "sgk_wordwrap.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["sgk_wordwrap*"]

@@ -16,6 +16,7 @@ import sys
 import threading
 from typing import Any
 
+from sgk_wordwrap import __version__
 from sgk_wordwrap.core.hotkey_manager import SgkHotkeyManager
 from sgk_wordwrap.core.layout_manager import SgkLayoutManager
 from sgk_wordwrap.core.text_processor import SgkTextProcessor
@@ -68,7 +69,7 @@ class SgkApp:
         cfg = self._config.sgk_load()
         self._sgk_configure_logging(cfg)
 
-        _logger.info("sgk_app_starting", extra={"version": "0.3.1"})
+        _logger.info("sgk_app_starting", extra={"version": __version__})
 
         # Initialise all components
         mapper = SgkLayoutMapper(

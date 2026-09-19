@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from sgk_wordwrap import __version__
 from sgk_wordwrap.utils.logger import sgk_get_logger
 from sgk_wordwrap.utils.resources import sgk_desktop_entry, sgk_systemd_unit
 
@@ -59,7 +60,7 @@ def _sgk_parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.3.1",
+        version=f"%(prog)s {__version__}",
     )
     return parser.parse_args()
 
