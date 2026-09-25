@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import time
 from typing import Any
 
 from sgk_wordwrap.input.uinput_backend import SgkUinputInjector
@@ -23,6 +24,8 @@ _logger = sgk_get_logger(__name__)
 _CLIPBOARD_TIMEOUT = 0.5
 _RETRY_DELAY = 0.05
 _RETRIES = 2
+_VISIBLE_TIMEOUT_S = 0.8
+_VISIBLE_POLL_S = 0.02
 
 
 class SgkClipboard:
@@ -31,7 +34,7 @@ class SgkClipboard:
     def __init__(
         self,
         action_delay_ms: int = 50,
-        clipboard_settle_ms: int = 150,
+        clipboard_settle_ms: int = 0,
         paste_settle_ms: int = 100,
         uinput: SgkUinputInjector | None = None,
     ) -> None:
@@ -81,12 +84,12 @@ class SgkClipboard:
             _logger.debug("sgk_primary_get_failed", extra={"error": str(exc)})
         return None
 
-    async def sgk_set(self, text: str) -> bool:
+    async def sgk_set(self, text: str, confirm: bool = False) -> bool:
         """Write text to CLIPBOARD. Returns True on success."""
         for attempt in range(_RETRIES):
             try:
                 await self._sgk_run_set(self._sgk_set_cmd(primary=False), text)
-                return True
+                return await self._sgk_wait_visible(text) if confirm else True
             except Exception as exc:
                 if attempt < _RETRIES - 1:
                     await asyncio.sleep(_RETRY_DELAY)
@@ -135,7 +138,11 @@ class SgkClipboard:
                 )
                 return False
             await self._sgk_run_set(self._sgk_set_cmd(primary=False), text)
-            await asyncio.sleep(self._clipboard_settle)
+            if not await self._sgk_wait_visible(text):
+                _logger.warning("sgk_paste_clipboard_not_ready", extra={"len": len(text)})
+                return False
+            if self._clipboard_settle:
+                await asyncio.sleep(self._clipboard_settle)
             self._uinput.sgk_send_combo(combo)
             await asyncio.sleep(self._paste_settle)
             _logger.debug("sgk_paste_sent", extra={"combo": combo, "len": len(text)})
@@ -263,6 +270,24 @@ class SgkClipboard:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    async def _sgk_wait_visible(self, text: str) -> bool:
+        if self._display != "wayland":
+            return True
+        want = text.rstrip("\n")
+        t0 = time.monotonic()
+        while True:
+            try:
+                current = await self._sgk_run_get(self._sgk_get_cmd(primary=False))
+            except Exception:
+                current = None
+            waited = time.monotonic() - t0
+            if current is not None and current.rstrip("\n") == want:
+                _logger.debug("sgk_clipboard_visible", extra={"wait_ms": round(waited * 1000)})
+                return True
+            if waited >= _VISIBLE_TIMEOUT_S:
+                return False
+            await asyncio.sleep(_VISIBLE_POLL_S)
 
     async def _sgk_run_get(self, cmd: list[str]) -> str | None:
         proc = await asyncio.create_subprocess_exec(

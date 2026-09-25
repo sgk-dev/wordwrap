@@ -56,7 +56,7 @@ _SGK_DEFAULT_CONFIG: dict[str, Any] = {
         "fallback_to_word_on_no_selection": True,
         "restore_clipboard": True,
         "action_delay_ms": 50,
-        "clipboard_settle_ms": 150,
+        "clipboard_settle_ms": 0,
         "paste_settle_ms": 100,
         "copy_settle_ms": 300,
         "hotkey_settle_ms": 150,

@@ -36,18 +36,23 @@ def clip(monkeypatch: pytest.MonkeyPatch):
     sets: list[tuple[list[str], str]] = []
     gets: list[list[str]] = []
 
+    board = {"clipboard": "CURRENT_SELECTION", "frozen": False}
+
     async def fake_run_set(cmd, text):
         sets.append((cmd, text))
+        if "--primary" not in cmd and not board["frozen"]:
+            board["clipboard"] = None if "--clear" in cmd else text
 
     async def fake_run_get(cmd):
         gets.append(cmd)
-        return "CURRENT_SELECTION"
+        return board["clipboard"]
 
     monkeypatch.setattr(cb, "_sgk_run_set", fake_run_set)
     monkeypatch.setattr(cb, "_sgk_run_get", fake_run_get)
     cb._test_sets = sets  # type: ignore[attr-defined]
     cb._test_gets = gets  # type: ignore[attr-defined]
     cb._test_uinput = fake  # type: ignore[attr-defined]
+    cb._test_board = board  # type: ignore[attr-defined]
     return cb
 
 
@@ -91,3 +96,29 @@ async def test_paste_text_no_wtype_or_ydotool(clip, monkeypatch) -> None:
 async def test_send_key_routes_to_uinput(clip) -> None:
     await clip.sgk_send_key("ctrl+shift+Left")
     assert clip._test_uinput.combos == ["ctrl+shift+Left"]
+
+
+@pytest.mark.asyncio
+async def test_paste_waits_until_clipboard_holds_text(clip) -> None:
+    ok = await clip.sgk_paste_text("привет")
+    assert ok is True
+    assert clip._test_gets, "paste must read the clipboard back before Ctrl+V"
+    assert clip._test_uinput.combos == ["ctrl+v"]
+
+
+@pytest.mark.asyncio
+async def test_paste_aborts_when_clipboard_never_updates(clip, monkeypatch) -> None:
+    monkeypatch.setattr("sgk_wordwrap.input.clipboard._VISIBLE_TIMEOUT_S", 0.05)
+    clip._test_board["frozen"] = True
+    ok = await clip.sgk_paste_text("привет")
+    assert ok is False
+    assert clip._test_uinput.combos == []
+
+
+@pytest.mark.asyncio
+async def test_set_confirm_reports_visibility(clip, monkeypatch) -> None:
+    monkeypatch.setattr("sgk_wordwrap.input.clipboard._VISIBLE_TIMEOUT_S", 0.05)
+    assert await clip.sgk_set("marker", confirm=True) is True
+    clip._test_board["frozen"] = True
+    assert await clip.sgk_set("other", confirm=True) is False
+    assert await clip.sgk_set("other") is True

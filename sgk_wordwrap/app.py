@@ -88,7 +88,7 @@ class SgkApp:
         behavior = cfg.get("behavior", {})
         clipboard = SgkClipboard(
             action_delay_ms=behavior.get("action_delay_ms", 50),
-            clipboard_settle_ms=behavior.get("clipboard_settle_ms", 150),
+            clipboard_settle_ms=behavior.get("clipboard_settle_ms", 0),
             paste_settle_ms=behavior.get("paste_settle_ms", 100),
         )
 

@@ -45,7 +45,7 @@ def _make_processor(
     state = {"last_set": None}
     seq = iter(get_returns or [])
 
-    async def _set(text: str) -> bool:
+    async def _set(text: str, confirm: bool = False) -> bool:
         if set_ok:
             state["last_set"] = text
         return set_ok
@@ -418,3 +418,42 @@ async def test_waits_for_physical_modifiers_to_be_released() -> None:
     await p.sgk_process()
     assert held["n"] <= 0
     p._clipboard.sgk_paste_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_marker_is_written_with_confirmation() -> None:
+    p = _make_processor(get_returns=["orig", "ghbdtn"], converted="привет")
+    await p.sgk_process()
+    first = p._clipboard.sgk_set.call_args_list[0]
+    assert first.args[0].startswith("sgk-wordwrap-")
+    assert first.kwargs.get("confirm") is True
+
+
+@pytest.mark.asyncio
+async def test_late_marker_is_never_treated_as_selection() -> None:
+    p = _make_processor(
+        get_returns=["orig", "sgk-wordwrap-stale", "sgk-wordwrap-stale", "wordtext"],
+        set_ok=False,
+        converted="CONV",
+    )
+    await p.sgk_process()
+    assert "ctrl+shift+Left" in _sent_keys(p)
+    p._clipboard.sgk_paste_text.assert_called_once_with("CONV", "ctrl+v")
+
+
+@pytest.mark.asyncio
+async def test_failed_paste_keeps_layout_and_restores_clipboard() -> None:
+    p = _make_processor(get_returns=["orig", "ghbdtn"], converted="привет")
+    p._clipboard.sgk_paste_text = AsyncMock(return_value=False)
+    await p.sgk_process()
+    p._layout_manager.sgk_switch_to.assert_not_called()
+    assert _set_values(p)[-1] == "orig"
+
+
+@pytest.mark.asyncio
+async def test_terminal_failed_paste_keeps_primary_and_layout() -> None:
+    p = _make_processor(primary="ghbdtn", converted="привет")
+    p._clipboard.sgk_paste_text = AsyncMock(return_value=False)
+    await p.sgk_process("convert_terminal")
+    p._clipboard.sgk_clear_primary.assert_not_called()
+    p._layout_manager.sgk_switch_to.assert_not_called()

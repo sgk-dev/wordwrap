@@ -39,6 +39,7 @@ _PASTE_COMBO = "ctrl+v"
 _COPY_POLL_S = 0.04
 _MODIFIER_RELEASE_MAX_S = 0.6
 _COPY_ATTEMPTS = 2
+_MARKER_PREFIX = "sgk-wordwrap-"
 
 
 class SgkTextProcessor:
@@ -154,7 +155,9 @@ class SgkTextProcessor:
             return
         converted, layout_before, layout_after = prepared
 
-        await self._clipboard.sgk_paste_text(converted, _PASTE_COMBO)
+        if not await self._clipboard.sgk_paste_text(converted, _PASTE_COMBO):
+            await self._sgk_restore(saved_clipboard, force=True)
+            return
         await self._sgk_switch_layout(layout_after)
         await self._sgk_restore(saved_clipboard)
         self._sgk_log_convert(layout_before, layout_after, len(text), terminal=False)
@@ -196,7 +199,9 @@ class SgkTextProcessor:
             await self._sgk_restore(saved_clipboard, force=True)
             return
 
-        await self._clipboard.sgk_paste_text(converted, self._terminal_paste_combo)
+        if not await self._clipboard.sgk_paste_text(converted, self._terminal_paste_combo):
+            await self._sgk_restore(saved_clipboard, force=True)
+            return
         await self._clipboard.sgk_clear_primary()
         await self._sgk_switch_layout(layout_after)
         await self._sgk_restore(saved_clipboard)
@@ -301,8 +306,9 @@ class SgkTextProcessor:
         The copy shortcut is Ctrl+Insert, not Ctrl+C: in a terminal Ctrl+C is
         SIGINT and would kill the foreground program.
         """
-        marker = f"sgk-wordwrap-{uuid.uuid4().hex}"
-        baseline = marker if await self._clipboard.sgk_set(marker) else saved_clipboard
+        marker = f"{_MARKER_PREFIX}{uuid.uuid4().hex}"
+        confirmed = await self._clipboard.sgk_set(marker, confirm=True)
+        baseline = marker if confirmed else saved_clipboard
 
         if not force_word:
             for _ in range(_COPY_ATTEMPTS):
@@ -323,7 +329,9 @@ class SgkTextProcessor:
 
     @staticmethod
     def _sgk_is_fresh(text: str | None, baseline: str | None) -> bool:
-        return bool(text and text.strip() and text != baseline)
+        return bool(
+            text and text.strip() and text != baseline and not text.startswith(_MARKER_PREFIX)
+        )
 
     async def _sgk_copy_selection(self, baseline: str | None) -> str | None:
         """Copy the current selection into CLIPBOARD (Ctrl+Insert) and read it.
