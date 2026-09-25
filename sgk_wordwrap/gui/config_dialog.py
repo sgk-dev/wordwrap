@@ -17,6 +17,7 @@ from sgk_wordwrap.gui.i18n import (
     sgk_normalize_lang,
     sgk_tr,
 )
+from sgk_wordwrap.input.evdev_backend import sgk_hotkey_is_valid
 from sgk_wordwrap.utils.autostart import sgk_is_autostart_enabled, sgk_set_autostart
 from sgk_wordwrap.utils.logger import sgk_get_logger
 
@@ -61,6 +62,7 @@ class SgkConfigDialog:
             QLabel,
             QLineEdit,
             QListWidget,
+            QMessageBox,
             QPushButton,
             QSpinBox,
             QTabWidget,
@@ -198,6 +200,27 @@ class SgkConfigDialog:
         )
 
         def _on_accept() -> None:
+            hotkey_fields = (
+                ("cfg.hotkey.convert", convert_edit),
+                ("cfg.hotkey.convert_terminal", terminal_edit),
+                ("cfg.hotkey.convert_last_word", last_word_edit),
+                ("cfg.hotkey.toggle", toggle_edit),
+            )
+            for label_key, edit in hotkey_fields:
+                if not sgk_hotkey_is_valid(edit.text().strip()):
+                    tabs.setCurrentIndex(tabs.indexOf(hk_tab))
+                    edit.setFocus()
+                    edit.selectAll()
+                    QMessageBox.warning(
+                        dialog,
+                        self._tr("cfg.title"),
+                        self._tr("cfg.hotkey.invalid").format(
+                            field=self._tr(label_key).rstrip(":"),
+                            value=edit.text().strip(),
+                        ),
+                    )
+                    return
+
             new_lang = lang_combo.currentData() or "en"
             new_style = "mono" if mono_cb.isChecked() else "color"
 

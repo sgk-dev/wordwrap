@@ -2,11 +2,14 @@
 
 from unittest.mock import patch
 
+import pytest
+
 with patch("evdev.InputDevice"), patch("evdev.ecodes"):
     from sgk_wordwrap.input.evdev_backend import (
         _sgk_parse_hotkey,
         _sgk_pick_hotkey,
         _SgkHotkeySpec,
+        sgk_hotkey_is_valid,
     )
 
 
@@ -98,3 +101,19 @@ class TestLoggingExtraKeysAreSafe:
         for reserved in ('extra={"name"', 'extra={"module"', 'extra={"process"'):
             assert reserved not in src
 
+
+
+class TestHotkeyIsValid:
+    @pytest.mark.parametrize("hotkey", [
+        "ctrl+f1", "ctrl+shift+f1", "ctrl+pause", "super+space", "<Primary><Shift>F1", "f9",
+    ])
+    def test_valid(self, hotkey):
+        pytest.importorskip("evdev")
+        assert sgk_hotkey_is_valid(hotkey)
+
+    @pytest.mark.parametrize("hotkey", [
+        "", "ctrl+alt", "ctrl", "alt", "shift+super", "ctrl+control", "hyper+f1", "ctrl+nosuchkey",
+    ])
+    def test_invalid(self, hotkey):
+        pytest.importorskip("evdev")
+        assert not sgk_hotkey_is_valid(hotkey)

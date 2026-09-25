@@ -58,6 +58,19 @@ def _sgk_parse_hotkey(hotkey_str: str) -> tuple[frozenset[str], str]:
     return frozenset(mods), key
 
 
+def sgk_hotkey_is_valid(hotkey_str: str) -> bool:
+    mods, key = _sgk_parse_hotkey(hotkey_str)
+    if not key or not mods <= _SGK_MODIFIER_KEY_NAMES.keys():
+        return False
+    if _SGK_MODIFIER_ALIASES.get(key, key) in _SGK_MODIFIER_KEY_NAMES:
+        return False
+    try:
+        from evdev import ecodes
+    except ImportError:
+        return True
+    return hasattr(ecodes, f"KEY_{key.upper()}")
+
+
 def _sgk_pick_hotkey(
     pressed_mods: set[str],
     trigger_key: str,

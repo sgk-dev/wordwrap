@@ -65,6 +65,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Hotkey changes apply after restart.",
         "ru": "Изменения горячих клавиш применяются после перезапуска.",
     },
+    "cfg.hotkey.invalid": {
+        "en": "{field}: \"{value}\" is not a valid hotkey. It needs one regular key, "
+              "optionally with modifiers, for example ctrl+f1 or ctrl+shift+f1. "
+              "Ctrl, Alt, Shift and Super alone do not work as the key.",
+        "ru": "{field}: \"{value}\" - неверная горячая клавиша. Нужна одна обычная клавиша, "
+              "можно с модификаторами, например ctrl+f1 или ctrl+shift+f1. "
+              "Ctrl, Alt, Shift и Super сами по себе клавишей быть не могут.",
+    },
     "cfg.bl.explain": {
         "en": "Conversion is disabled in these programs (for example, password managers).",
         "ru": "В этих программах конверсия отключена (например, менеджеры паролей).",
