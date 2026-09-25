@@ -13,7 +13,7 @@ Select the mistyped text, press **Ctrl+F1**:
 ![Platform](https://img.shields.io/badge/platform-GNOME%20Wayland-e95420)
 ![PyPI](https://img.shields.io/pypi/v/sgk-wordwrap?label=pypi)
 ![License](https://img.shields.io/badge/license-GPLv3-blue)
-![Tests](https://img.shields.io/badge/tests-128%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-149%20passing-brightgreen)
 
 </div>
 
@@ -150,7 +150,7 @@ python3 -m sgk_wordwrap --no-gui               # headless
     "terminal_paste_combo": "ctrl+shift+v",
     "terminal_erase": "line",
     "copy_settle_ms": 400,
-    "clipboard_settle_ms": 150,
+    "clipboard_settle_ms": 0,
     "paste_settle_ms": 100
   }
 }
