@@ -140,3 +140,82 @@ class TestPunctuation:
         assert len(set(fwd.values())) == len(fwd)
         for ch in fwd:
             assert mapper.sgk_convert(mapper.sgk_convert(ch, src, dst), dst, src) == ch
+
+
+class TestEnUkPunctuationKeys:
+    @pytest.mark.parametrize("en, uk", [
+        (";", "ж"), (":", "Ж"), ("'", "є"), ("\"", "Є"),
+        ("\\", "ґ"), ("|", "Ґ"), ("`", "'"),
+    ])
+    def test_round_trip(self, mapper: SgkLayoutMapper, en: str, uk: str) -> None:
+        assert mapper.sgk_convert(en, "en", "uk") == uk
+        assert mapper.sgk_convert(uk, "uk", "en") == en
+
+    def test_word_with_zhe(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_convert("ltym;", "en", "uk") == "деньж"
+
+    def test_builtin_maps_have_unique_values(self) -> None:
+        data_dir = Path(__file__).resolve().parents[2] / "sgk_wordwrap" / "layouts" / "data"
+        for path in data_dir.glob("*.json"):
+            values = list(json.loads(path.read_text(encoding="utf-8"))["map"].values())
+            assert len(values) == len(set(values)), path.name
+
+
+class TestMapValidation:
+    def _load(self, tmp_path: Path, content) -> SgkLayoutMapper:
+        (tmp_path / "bad.json").write_text(json.dumps(content), encoding="utf-8")
+        m = SgkLayoutMapper(custom_maps_dir=tmp_path)
+        m.sgk_load_maps()
+        return m
+
+    def test_non_string_value_rejected(self, tmp_path: Path) -> None:
+        m = self._load(tmp_path, {"from_layout": "xx", "to_layout": "yy", "map": {"q": 1}})
+        assert not m.sgk_has_map("xx", "yy")
+        assert m.sgk_has_map("en", "ru")
+
+    def test_missing_layout_names_rejected(self, tmp_path: Path) -> None:
+        m = self._load(tmp_path, {"from_layout": "", "to_layout": "yy", "map": {"q": "й"}})
+        assert not m.sgk_has_map("", "yy")
+
+    def test_non_object_rejected(self, tmp_path: Path) -> None:
+        m = self._load(tmp_path, [1, 2])
+        assert m.sgk_has_map("en", "ru")
+
+    def test_valid_custom_map_loaded(self, tmp_path: Path) -> None:
+        m = self._load(tmp_path, {"from_layout": "xx", "to_layout": "yy", "map": {"q": "z"}})
+        assert m.sgk_convert("q", "xx", "yy") == "z"
+
+
+class TestDetect:
+    def test_detect_en_text_two_layouts(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("ghbdtn", ["en", "ru"]) == "en"
+
+    def test_detect_ru_text_two_layouts(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("руддщ", ["en", "ru"]) == "ru"
+
+    def test_detect_uk_unique_letter_beats_ru_majority(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("привіт", ["en", "ru", "uk"]) == "uk"
+
+    def test_detect_ru_unique_letter_with_three_layouts(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("ыъэ", ["en", "ru", "uk"]) == "ru"
+
+    def test_detect_shared_cyrillic_with_three_layouts_prefers_ru(
+        self, mapper: SgkLayoutMapper
+    ) -> None:
+        assert mapper.sgk_detect_likely_layout("привет", ["en", "ru", "uk"]) == "ru"
+
+    def test_detect_en_with_three_layouts(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("ghbdtn", ["en", "ru", "uk"]) == "en"
+
+    def test_detect_digits_only_returns_none(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("12345", ["en", "ru"]) is None
+
+    def test_detect_single_candidate_returns_none(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("hello", ["en"]) is None
+
+    def test_detect_tie_follows_candidate_order(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("a б", ["en", "ru"]) == "en"
+        assert mapper.sgk_detect_likely_layout("б a", ["ru", "en"]) == "ru"
+
+    def test_detect_ignores_maps_outside_candidates(self, mapper: SgkLayoutMapper) -> None:
+        assert mapper.sgk_detect_likely_layout("привет", ["en", "uk"]) == "uk"

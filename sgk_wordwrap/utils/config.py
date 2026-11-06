@@ -6,6 +6,8 @@ Config file: ~/.config/sgk-wordwrap/config.json
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -95,9 +97,11 @@ class SgkConfig:
         try:
             with self._path.open("r", encoding="utf-8") as f:
                 loaded = json.load(f)
+            if not isinstance(loaded, dict):
+                raise ValueError("config root is not an object")
             self._data = self._sgk_merge_defaults(loaded)
             _logger.info("sgk_config_loaded", extra={"path": str(self._path)})
-        except (json.JSONDecodeError, OSError) as exc:
+        except (ValueError, OSError) as exc:
             _logger.warning(
                 "sgk_config_load_failed",
                 extra={"path": str(self._path), "error": str(exc)},
@@ -112,8 +116,13 @@ class SgkConfig:
             self._data = data
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            with self._path.open("w", encoding="utf-8") as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self._path.parent,
+                prefix=".config-", suffix=".tmp", delete=False,
+            ) as f:
+                tmp_name = f.name
                 json.dump(self._data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_name, self._path)
             _logger.debug("sgk_config_saved", extra={"path": str(self._path)})
         except OSError as exc:
             _logger.error(
@@ -155,10 +164,35 @@ class SgkConfig:
         return self._data
 
 
-def _sgk_deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
+def _sgk_deep_merge(
+    base: dict[str, Any], override: dict[str, Any], path: str = ""
+) -> None:
     """Merge override into base in-place (recursive)."""
     for key, value in override.items():
-        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _sgk_deep_merge(base[key], value)
-        else:
-            base[key] = value
+        key_path = f"{path}.{key}" if path else str(key)
+        if key in base and isinstance(base[key], dict):
+            if isinstance(value, dict):
+                _sgk_deep_merge(base[key], value, key_path)
+            else:
+                _logger.warning("sgk_config_bad_value", extra={"key": key_path})
+            continue
+        if key in base and not _sgk_type_ok(base[key], value):
+            _logger.warning("sgk_config_bad_value", extra={"key": key_path})
+            continue
+        base[key] = value
+
+
+def _sgk_type_ok(default: Any, value: Any) -> bool:
+    if value is None:
+        return default is None
+    if isinstance(default, bool):
+        return isinstance(value, bool)
+    if isinstance(default, int):
+        return isinstance(value, int) and not isinstance(value, bool)
+    if isinstance(default, float):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(default, str):
+        return isinstance(value, str)
+    if isinstance(default, list):
+        return isinstance(value, list)
+    return True

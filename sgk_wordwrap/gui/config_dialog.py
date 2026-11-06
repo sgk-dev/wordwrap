@@ -9,19 +9,37 @@ A tabbed PyQt6 QDialog:
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Callable
 
+from sgk_wordwrap.core.layout_manager import sgk_read_switch_shortcut
 from sgk_wordwrap.gui.i18n import (
     SGK_LANGUAGE_NAMES,
     SGK_LANGUAGES,
     sgk_normalize_lang,
     sgk_tr,
 )
-from sgk_wordwrap.input.evdev_backend import sgk_hotkey_is_valid
+from sgk_wordwrap.input.evdev_backend import sgk_hotkey_is_valid, sgk_parse_hotkey
 from sgk_wordwrap.utils.autostart import sgk_is_autostart_enabled, sgk_set_autostart
 from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
+
+
+def sgk_find_hotkey_problem(hotkeys: dict[str, str]) -> tuple[str, str, str | None] | None:
+    seen: dict[tuple[frozenset[str], str], str] = {}
+    for name, value in hotkeys.items():
+        if not sgk_hotkey_is_valid(value):
+            return "invalid", name, None
+        parsed = sgk_parse_hotkey(value)
+        if parsed in seen:
+            return "duplicate", name, seen[parsed]
+        seen[parsed] = name
+    return None
+
+
+def sgk_hotkey_clashes(hotkey: str, other: str) -> bool:
+    return sgk_parse_hotkey(hotkey) == sgk_parse_hotkey(other)
 
 
 class SgkConfigDialog:
@@ -166,6 +184,10 @@ class SgkConfigDialog:
         restore_cb = QCheckBox()
         restore_cb.setChecked(behavior.get("restore_clipboard", True))
         beh_layout.addRow(self._tr("cfg.beh.restore"), restore_cb)
+        history_note = QLabel(self._tr("cfg.beh.history_note"))
+        history_note.setWordWrap(True)
+        history_note.setStyleSheet("color: palette(mid);")
+        beh_layout.addRow(history_note)
 
         delay_spin = QSpinBox()
         delay_spin.setRange(10, 500)
@@ -206,25 +228,49 @@ class SgkConfigDialog:
                 ("cfg.hotkey.convert_last_word", last_word_edit),
                 ("cfg.hotkey.toggle", toggle_edit),
             )
-            for label_key, edit in hotkey_fields:
-                if not sgk_hotkey_is_valid(edit.text().strip()):
-                    tabs.setCurrentIndex(tabs.indexOf(hk_tab))
-                    edit.setFocus()
-                    edit.selectAll()
-                    QMessageBox.warning(
-                        dialog,
-                        self._tr("cfg.title"),
-                        self._tr("cfg.hotkey.invalid").format(
-                            field=self._tr(label_key).rstrip(":"),
-                            value=edit.text().strip(),
-                        ),
+            values = {key: edit.text().strip() for key, edit in hotkey_fields}
+            edits = dict(hotkey_fields)
+            problem = sgk_find_hotkey_problem(values)
+            if problem is not None:
+                kind, label_key, other_key = problem
+                edit = edits[label_key]
+                tabs.setCurrentIndex(tabs.indexOf(hk_tab))
+                edit.setFocus()
+                edit.selectAll()
+                if kind == "duplicate":
+                    message = self._tr("cfg.hotkey.duplicate").format(
+                        field=self._tr(label_key).rstrip(":"),
+                        value=values[label_key],
+                        other=self._tr(other_key).rstrip(":"),
                     )
+                else:
+                    message = self._tr("cfg.hotkey.invalid").format(
+                        field=self._tr(label_key).rstrip(":"),
+                        value=values[label_key],
+                    )
+                QMessageBox.warning(dialog, self._tr("cfg.title"), message)
+                return
+
+            switch_combo = sgk_read_switch_shortcut()
+            for label_key, value in values.items():
+                if not sgk_hotkey_clashes(value, switch_combo):
+                    continue
+                answer = QMessageBox.question(
+                    dialog,
+                    self._tr("cfg.title"),
+                    self._tr("cfg.hotkey.switch_clash").format(
+                        field=self._tr(label_key).rstrip(":"), value=value,
+                    ),
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    tabs.setCurrentIndex(tabs.indexOf(hk_tab))
+                    edits[label_key].setFocus()
                     return
 
             new_lang = lang_combo.currentData() or "en"
             new_style = "mono" if mono_cb.isChecked() else "color"
 
-            updated = dict(self._config)
+            updated = copy.deepcopy(self._config)
             updated.setdefault("ui", {}).update(
                 {"language": new_lang, "tray_icon_style": new_style}
             )

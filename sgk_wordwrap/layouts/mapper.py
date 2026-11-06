@@ -57,7 +57,14 @@ class SgkLayoutMapper:
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
+        if not isinstance(data, dict) or not isinstance(data.get("map"), dict):
+            raise ValueError("map file must be an object with a 'map' object")
+        for field in ("from_layout", "to_layout"):
+            if not isinstance(data.get(field), str) or not data[field]:
+                raise ValueError(f"'{field}' must be a non-empty string")
         forward: dict[str, str] = data["map"]
+        if not all(isinstance(k, str) and isinstance(v, str) for k, v in forward.items()):
+            raise ValueError("map keys and values must be strings")
         reverse: dict[str, str] = {v: k for k, v in forward.items()}
 
         layout_map = SgkLayoutMap(
@@ -131,11 +138,37 @@ class SgkLayoutMapper:
                 if layout in scores:
                     scores[layout] += 1
 
+        unique = self._sgk_unique_scores(text, cand)
+        if unique:
+            return max(unique, key=lambda k: unique[k])
+
         if not any(scores.values()):
             return None
 
         best = max(scores, key=lambda k: scores[k])
         return best if scores[best] > 0 else None
+
+    def _sgk_unique_scores(self, text: str, cand: set[str]) -> dict[str, int]:
+        chars_by_layout: dict[str, set[str]] = {}
+        for (from_l, _to_l), layout_map in self._maps.items():
+            if from_l in cand:
+                chars_by_layout.setdefault(from_l, set()).update(
+                    c for c in layout_map.forward if c.isalpha()
+                )
+        non_latin = [
+            lay for lay, chars in chars_by_layout.items()
+            if any(not c.isascii() for c in chars)
+        ]
+        if len(non_latin) < 2:
+            return {}
+        result: dict[str, int] = {}
+        for char in text:
+            if not char.isalpha():
+                continue
+            owners = [lay for lay, chars in chars_by_layout.items() if char in chars]
+            if len(owners) == 1:
+                result[owners[0]] = result.get(owners[0], 0) + 1
+        return result
 
     def sgk_get_available_pairs(self) -> list[tuple[str, str]]:
         return list(self._maps.keys())

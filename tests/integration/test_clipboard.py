@@ -31,7 +31,7 @@ def clipboard():
 @pytest.mark.asyncio
 async def test_set_and_get_roundtrip(clipboard) -> None:
     text = "sgk_wordwrap_test_string_42"
-    await clipboard.sgk_set(text)
+    await clipboard.sgk_set(text, confirm=True)
     result = await clipboard.sgk_get()
     assert result == text
 
@@ -39,33 +39,18 @@ async def test_set_and_get_roundtrip(clipboard) -> None:
 @pytest.mark.asyncio
 async def test_unicode_roundtrip(clipboard) -> None:
     text = "Привет мир! Hello World! Слава Україні!"
-    await clipboard.sgk_set(text)
+    await clipboard.sgk_set(text, confirm=True)
     result = await clipboard.sgk_get()
     assert result == text
 
 
 @pytest.mark.asyncio
 async def test_save_and_restore(clipboard) -> None:
-    original = "original content"
-    await clipboard.sgk_set(original)
-
-    await clipboard.sgk_save()
-    await clipboard.sgk_set("temporary content")
-
-    intermediate = await clipboard.sgk_get()
-    assert intermediate == "temporary content"
-
-    await clipboard.sgk_restore()
-    restored = await clipboard.sgk_get()
-    assert restored == original
-
-
-@pytest.mark.asyncio
-async def test_is_text_safe() -> None:
-    from sgk_wordwrap.input.clipboard import SgkClipboard
-    assert SgkClipboard.sgk_is_text_safe("hello") is True
-    assert SgkClipboard.sgk_is_text_safe("") is False
-    assert SgkClipboard.sgk_is_text_safe("   ") is False
-    assert SgkClipboard.sgk_is_text_safe("a" * 20000, max_length=10000) is False
-    assert SgkClipboard.sgk_is_text_safe(None) is False  # type: ignore[arg-type]
-    assert SgkClipboard.sgk_is_text_safe(123) is False  # type: ignore[arg-type]
+    saved = await clipboard.sgk_get()
+    assert await clipboard.sgk_set("temporary content", confirm=True)
+    assert await clipboard.sgk_get() == "temporary content"
+    if saved is None:
+        await clipboard.sgk_clear()
+        return
+    assert await clipboard.sgk_set(saved, confirm=True)
+    assert await clipboard.sgk_get() == saved

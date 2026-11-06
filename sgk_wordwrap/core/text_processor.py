@@ -28,7 +28,7 @@ import uuid
 from typing import Callable
 
 from sgk_wordwrap.core.layout_manager import SgkLayoutManager
-from sgk_wordwrap.input.clipboard import SgkClipboard
+from sgk_wordwrap.input.clipboard import SgkClipboard, SgkClipboardBlob
 from sgk_wordwrap.layouts.detector import SgkFieldDetector
 from sgk_wordwrap.layouts.mapper import SgkLayoutMapper
 from sgk_wordwrap.utils.logger import sgk_get_logger
@@ -40,6 +40,12 @@ _COPY_POLL_S = 0.04
 _MODIFIER_RELEASE_MAX_S = 0.6
 _COPY_ATTEMPTS = 2
 _MARKER_PREFIX = "sgk-wordwrap-"
+_SWITCH_POLL_S = 0.04
+_SWITCH_WAIT_LIVE_S = 0.4
+_SWITCH_WAIT_MRU_S = 0.25
+_REPEAT_WINDOW_S = 4.0
+
+_SgkSaved = str | SgkClipboardBlob | None
 
 
 class SgkTextProcessor:
@@ -79,6 +85,7 @@ class SgkTextProcessor:
         self._terminal_max_backspaces = terminal_max_backspaces
         self._modifiers_held = modifiers_held
         self._busy = False
+        self._sgk_last_target: tuple[str, float] | None = None
 
     async def sgk_process(self, mode: str = "convert") -> None:
         """Entry point - called when a convert hotkey fires.
@@ -141,26 +148,78 @@ class SgkTextProcessor:
         if self._sgk_sensitive():
             return
 
-        saved_clipboard = await self._clipboard.sgk_get()
+        saved_clipboard = await self._sgk_save_clipboard()
+        restored = False
+        try:
+            repeat_target = None if last_word else self._sgk_recent_target()
+            if repeat_target is not None and await self._sgk_layout_is(repeat_target):
+                repeat_target = None
+            text = await self._sgk_acquire_text(
+                saved_clipboard if isinstance(saved_clipboard, str) else None,
+                force_word=last_word,
+                allow_word=repeat_target is None,
+            )
+            if not text and repeat_target is not None:
+                self._sgk_last_target = None
+                _logger.info("sgk_repeat_press_layout_only", extra={"want": repeat_target})
+                await self._sgk_switch_layout(repeat_target)
+                restored = True
+                await self._sgk_restore(saved_clipboard, force=True)
+                return
+            if not text:
+                _logger.debug("sgk_no_text_acquired")
+                restored = True
+                await self._sgk_restore(saved_clipboard, force=True)
+                return
+            self._sgk_last_target = None
 
-        text = await self._sgk_acquire_text(saved_clipboard, force_word=last_word)
-        if not text:
-            _logger.debug("sgk_no_text_acquired")
-            await self._sgk_restore(saved_clipboard, force=True)
-            return
+            prepared = self._sgk_prepare(text)
+            if prepared is None:
+                restored = True
+                await self._sgk_restore(saved_clipboard, force=True)
+                return
+            converted, layout_before, layout_after = prepared
 
-        prepared = self._sgk_prepare(text)
-        if prepared is None:
-            await self._sgk_restore(saved_clipboard, force=True)
-            return
-        converted, layout_before, layout_after = prepared
+            if not await self._clipboard.sgk_paste_text(converted, _PASTE_COMBO):
+                restored = True
+                await self._sgk_restore(saved_clipboard, force=True)
+                return
+            layout_now = await self._sgk_switch_layout(layout_after)
+            self._sgk_last_target = (layout_after, time.monotonic())
+            restored = True
+            await self._sgk_restore(saved_clipboard)
+            self._sgk_log_convert(
+                layout_before, layout_after, len(text), terminal=False, layout_now=layout_now
+            )
+        except Exception:
+            if not restored:
+                await self._sgk_restore(saved_clipboard, force=True)
+            raise
 
-        if not await self._clipboard.sgk_paste_text(converted, _PASTE_COMBO):
-            await self._sgk_restore(saved_clipboard, force=True)
-            return
-        await self._sgk_switch_layout(layout_after)
-        await self._sgk_restore(saved_clipboard)
-        self._sgk_log_convert(layout_before, layout_after, len(text), terminal=False)
+    def _sgk_recent_target(self) -> str | None:
+        last = self._sgk_last_target
+        if last is None:
+            return None
+        target, ts = last
+        if time.monotonic() - ts > _REPEAT_WINDOW_S:
+            self._sgk_last_target = None
+            return None
+        return target
+
+    async def _sgk_layout_is(self, target: str) -> bool:
+        await asyncio.sleep(self._layout_settle)
+        lm = self._layout_manager
+        per_window = lm.sgk_per_window()
+        live = lm.sgk_get_live_layout() if per_window else None
+        if per_window and live is None:
+            return False
+        return (live if live is not None else lm.sgk_get_mru_layout()) == target
+
+    async def _sgk_save_clipboard(self) -> _SgkSaved:
+        saved = await self._clipboard.sgk_get()
+        if saved is not None:
+            return saved
+        return await self._clipboard.sgk_snapshot_non_text()
 
     async def _sgk_do_process_terminal(self) -> None:
         """Terminal flow: erase the mistyped text and paste the fixed text.
@@ -193,19 +252,29 @@ class SgkTextProcessor:
             return
         converted, layout_before, layout_after = prepared
 
-        saved_clipboard = await self._clipboard.sgk_get()
+        saved_clipboard = await self._sgk_save_clipboard()
+        restored = False
+        try:
+            if not await self._sgk_terminal_erase(text):
+                restored = True
+                await self._sgk_restore(saved_clipboard, force=True)
+                return
 
-        if not await self._sgk_terminal_erase(text):
-            await self._sgk_restore(saved_clipboard, force=True)
-            return
-
-        if not await self._clipboard.sgk_paste_text(converted, self._terminal_paste_combo):
-            await self._sgk_restore(saved_clipboard, force=True)
-            return
-        await self._clipboard.sgk_clear_primary()
-        await self._sgk_switch_layout(layout_after)
-        await self._sgk_restore(saved_clipboard)
-        self._sgk_log_convert(layout_before, layout_after, len(text), terminal=True)
+            if not await self._clipboard.sgk_paste_text(converted, self._terminal_paste_combo):
+                restored = True
+                await self._sgk_restore(saved_clipboard, force=True)
+                return
+            await self._clipboard.sgk_clear_primary()
+            layout_now = await self._sgk_switch_layout(layout_after)
+            restored = True
+            await self._sgk_restore(saved_clipboard)
+            self._sgk_log_convert(
+                layout_before, layout_after, len(text), terminal=True, layout_now=layout_now
+            )
+        except Exception:
+            if not restored:
+                await self._sgk_restore(saved_clipboard, force=True)
+            raise
 
     def _sgk_prepare(self, text: str) -> tuple[str, str, str] | None:
         if not SgkClipboard.sgk_is_text_safe(text, self._max_length):
@@ -226,7 +295,12 @@ class SgkTextProcessor:
         return converted, layout_before, layout_after
 
     def _sgk_log_convert(
-        self, layout_before: str, layout_after: str, char_count: int, terminal: bool
+        self,
+        layout_before: str,
+        layout_after: str,
+        char_count: int,
+        terminal: bool,
+        layout_now: str | None = None,
     ) -> None:
         proc, win_class, _ = self._detector.sgk_get_active_window_info()
         _logger.info(
@@ -236,6 +310,7 @@ class SgkTextProcessor:
                 "window_class": win_class or "unknown",
                 "layout_before": layout_before,
                 "layout_after": layout_after,
+                "layout_now": layout_now,
                 "char_count": char_count,
                 "terminal": terminal,
             },
@@ -261,7 +336,7 @@ class SgkTextProcessor:
                 return False
             await self._clipboard.sgk_backspace(len(text))
         elif mode == "word":
-            for _ in range(text.count(" ") + text.count("\t") + 1):
+            for _ in range(max(1, len(text.split()))):
                 await self._clipboard.sgk_send_key("ctrl+w")
         else:
             await self._clipboard.sgk_send_key("ctrl+a")
@@ -280,7 +355,10 @@ class SgkTextProcessor:
         detected = self._mapper.sgk_detect_likely_layout(text, active)
         source = detected or self._layout_manager.sgk_get_current_layout()
         others = [lay for lay in active if lay != source]
-        target = others[0] if others else self._layout_manager.sgk_get_next_layout()
+        target = next(
+            (o for o in others if self._mapper.sgk_has_map(source, o)),
+            others[0] if others else self._layout_manager.sgk_get_next_layout(),
+        )
         _logger.debug(
             "sgk_direction",
             extra={"detected": detected, "source": source, "target": target},
@@ -288,7 +366,10 @@ class SgkTextProcessor:
         return source, target
 
     async def _sgk_acquire_text(
-        self, saved_clipboard: str | None, force_word: bool = False
+        self,
+        saved_clipboard: str | None,
+        force_word: bool = False,
+        allow_word: bool = True,
     ) -> str | None:
         """Get the text to convert.
 
@@ -316,7 +397,7 @@ class SgkTextProcessor:
                 if self._sgk_is_fresh(text, baseline):
                     _logger.debug("sgk_acquired_via_selection", extra={"len": len(text)})
                     return text
-            if not self._fallback_to_word:
+            if not self._fallback_to_word or not allow_word:
                 return None
 
         await self._clipboard.sgk_send_key("ctrl+shift+Left")
@@ -325,6 +406,8 @@ class SgkTextProcessor:
         if self._sgk_is_fresh(text, baseline):
             _logger.debug("sgk_acquired_via_word_selection", extra={"len": len(text)})
             return text
+        await self._clipboard.sgk_send_key("right")
+        _logger.info("sgk_word_fallback_failed")
         return None
 
     @staticmethod
@@ -355,18 +438,84 @@ class SgkTextProcessor:
         )
         return text
 
-    async def _sgk_switch_layout(self, target: str) -> None:
-        """Switch the system layout to `target`, with a uinput fallback.
+    async def _sgk_switch_layout(self, target: str) -> str | None:
+        """Switch the system layout to `target` and return the layout read back.
 
-        `gsettings set ... current <idx>` does not always take effect in a live
-        GNOME session, so if the layout has not changed after a short settle we
-        press the GNOME 'switch input source' shortcut (default Super+Space)
-        until it matches or we run out of tries.
+        GNOME ignores `gsettings set ... current`, so the GNOME 'switch input
+        source' shortcut (default Super+Space) is pressed through uinput. With
+        per-window input sources `mru-sources` is stale for the focused window,
+        so the live layout is read from `ibus engine`; without it the shortcut
+        is pressed and the result is read from `mru-sources`, which GNOME
+        rewrites on every interactive switch.
         """
+        lm = self._layout_manager
+        if not lm.sgk_uses_shortcut_switch():
+            return await self._sgk_switch_layout_legacy(target)
+
+        await asyncio.sleep(self._layout_settle)
+        per_window = lm.sgk_per_window()
+        live = lm.sgk_get_live_layout() if per_window else None
+        readback = "ibus" if live is not None else "mru"
+        reliable = live is not None or not per_window
+        before = live if live is not None else lm.sgk_get_mru_layout()
+        active = lm.sgk_get_active_layouts()
+        now = before
+        presses = 0
+        if not (reliable and before == target):
+            shortcut = lm.sgk_get_switch_shortcut()
+            wait_s = _SWITCH_WAIT_LIVE_S if reliable else _SWITCH_WAIT_MRU_S
+            for _ in range(max(1, len(active))):
+                taps = self._sgk_switch_taps(target, now, active, lm.sgk_get_mru_layouts())
+                await self._clipboard.sgk_send_key_repeat(shortcut, taps)
+                presses += 1
+                previous = now
+                now = await self._sgk_wait_layout_change(previous, readback, wait_s)
+                if now == target:
+                    break
+                if reliable and now == previous:
+                    break
+        extra = {
+            "want": target,
+            "before": before,
+            "now": now,
+            "presses": presses,
+            "per_window": per_window,
+            "readback": readback,
+        }
+        if now == target:
+            _logger.debug("sgk_layout_after_switch", extra=extra)
+        else:
+            _logger.warning("sgk_layout_switch_failed", extra=extra)
+        return now
+
+    @staticmethod
+    def _sgk_switch_taps(
+        target: str, current: str, active: list[str], mru: list[str]
+    ) -> int:
+        if len(active) <= 2:
+            return 1
+        order = [current] + [m for m in mru if m != current]
+        order += [a for a in active if a not in order]
+        if target not in order:
+            return 1
+        return min(max(1, order.index(target)), len(active) - 1)
+
+    async def _sgk_wait_layout_change(self, previous: str, readback: str, wait_s: float) -> str:
+        lm = self._layout_manager
+        t0 = time.monotonic()
+        value = previous
+        while True:
+            await asyncio.sleep(_SWITCH_POLL_S)
+            read = lm.sgk_get_live_layout() if readback == "ibus" else None
+            value = read if read is not None else lm.sgk_get_mru_layout()
+            if value != previous or time.monotonic() - t0 >= wait_s:
+                return value
+
+    async def _sgk_switch_layout_legacy(self, target: str) -> str | None:
         self._layout_manager.sgk_switch_to(target)
         await asyncio.sleep(self._layout_settle)
         if self._layout_manager.sgk_layout_matches(target):
-            return
+            return target
 
         shortcut = self._layout_manager.sgk_get_switch_shortcut()
         tries = max(1, len(self._layout_manager.sgk_get_active_layouts()))
@@ -375,20 +524,21 @@ class SgkTextProcessor:
             await asyncio.sleep(0.08)
             if self._layout_manager.sgk_layout_matches(target):
                 break
+        now = self._layout_manager.sgk_get_current_layout()
         _logger.debug(
             "sgk_layout_after_switch",
-            extra={
-                "want": target,
-                "now": self._layout_manager.sgk_get_current_layout(),
-                "used_shortcut": shortcut,
-            },
+            extra={"want": target, "now": now, "used_shortcut": shortcut},
         )
+        return now
 
-    async def _sgk_restore(self, saved: str | None, force: bool = False) -> None:
+    async def _sgk_restore(self, saved: _SgkSaved, force: bool = False) -> None:
         if not force and not self._restore_clipboard:
             return
         await asyncio.sleep(0.05)
         if saved is None:
             await self._clipboard.sgk_clear()
+        elif isinstance(saved, SgkClipboardBlob):
+            if not await self._clipboard.sgk_set_blob(saved):
+                await self._clipboard.sgk_clear()
         else:
             await self._clipboard.sgk_set(saved)

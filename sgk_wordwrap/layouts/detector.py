@@ -42,9 +42,12 @@ class SgkFieldDetector:
     ) -> None:
         self._extra_processes = frozenset(p.lower() for p in (extra_processes or []))
         self._extra_classes = frozenset(c.lower() for c in (extra_window_classes or []))
-        self._title_regexes = [
-            re.compile(p, re.IGNORECASE) for p in (title_patterns or [])
-        ]
+        self._title_regexes: list[re.Pattern[str]] = []
+        for pattern in title_patterns or []:
+            try:
+                self._title_regexes.append(re.compile(pattern, re.IGNORECASE))
+            except (re.error, TypeError) as exc:
+                _logger.warning("sgk_bad_title_regex", extra={"error": str(exc)})
 
     def sgk_is_sensitive_context(
         self,

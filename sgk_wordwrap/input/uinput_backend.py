@@ -16,6 +16,7 @@ import time
 import evdev
 from evdev import ecodes
 
+from sgk_wordwrap.input.base import SGK_VIRTUAL_DEVICE_NAME
 from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
@@ -44,6 +45,7 @@ _SGK_NAME_TO_CODE: dict[str, int] = {
 
 # Delay between the press phase and the release phase of a combo.
 _SGK_HOLD_S = 0.012
+_SGK_REPEAT_GAP_S = 0.04
 
 
 def _sgk_capabilities() -> list[int]:
@@ -67,7 +69,7 @@ class SgkUinputInjector:
 
     def __init__(
         self,
-        name: str = "SGK WordWrap Virtual Keyboard",
+        name: str = SGK_VIRTUAL_DEVICE_NAME,
         ui: object | None = "auto",
     ) -> None:
         """`ui` may be an injected device (tests) or None to force unavailable.
@@ -124,6 +126,35 @@ class SgkUinputInjector:
         parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
         codes = [c for c in (self._sgk_resolve(p) for p in parts) if c is not None]
         self._sgk_emit_combo(codes)
+
+    def sgk_send_combo_repeat(self, combo: str, count: int) -> None:
+        if not self._ui:
+            return
+        if count <= 1:
+            self.sgk_send_combo(combo)
+            return
+        parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
+        codes = [c for c in (self._sgk_resolve(p) for p in parts) if c is not None]
+        if not codes:
+            return
+        mods, key = codes[:-1], codes[-1]
+        try:
+            for c in mods:
+                self._ui.write(ecodes.EV_KEY, c, 1)
+            self._ui.syn()
+            time.sleep(_SGK_HOLD_S)
+            for i in range(count):
+                if i:
+                    time.sleep(_SGK_REPEAT_GAP_S)
+                self._ui.write(ecodes.EV_KEY, key, 1)
+                self._ui.syn()
+                time.sleep(_SGK_HOLD_S)
+                self._ui.write(ecodes.EV_KEY, key, 0)
+                self._ui.syn()
+        finally:
+            for c in reversed(mods):
+                self._ui.write(ecodes.EV_KEY, c, 0)
+            self._ui.syn()
 
     def sgk_backspace(self, count: int, key_delay: float = 0.006) -> None:
         """Press Backspace `count` times (used to erase text in a terminal)."""

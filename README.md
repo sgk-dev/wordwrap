@@ -51,10 +51,20 @@ only when you press the hotkey.
    built in). The direction comes from the text itself, not from the active layout.
 4. The result is pasted back via clipboard + synthetic **Ctrl+V** - `wtype` is not
    supported by Mutter, so this is the reliable path.
-5. The system layout is switched via `gsettings`; the real state is read back from
-   GNOME's `mru-sources`, and if the switch did not take effect the GNOME `Super+Space`
-   shortcut is pressed as a fallback.
+5. The system layout is switched by pressing the GNOME *switch input source* shortcut
+   (`Super+Space` by default, read from your settings). GNOME ignores
+   `gsettings set ... current`, so the shortcut is the only working path. With
+   per-window input sources (Settings -> Keyboard -> *Switch input sources individually
+   for each window*) the focused window's layout is read from `ibus engine`, because
+   `mru-sources` only changes on interactive switches; without IBus the shortcut is
+   pressed and the result is read back from `mru-sources`. With 3+ layouts the shortcut
+   is held and tapped to reach the target in the switcher.
 6. Your clipboard is restored.
+
+Pressing the convert hotkey again within a few seconds of a conversion, with nothing
+selected, does not convert the last word back - it only makes sure the layout is the one
+the conversion switched to. If the layout already is that one, the press works as usual
+and converts the last word.
 
 **Terminal mode** (`Ctrl+Shift+F1`) is different: it takes the mouse selection, clears
 the whole readline input line (`Ctrl+A`, `Ctrl+K` - `Ctrl+Y` brings it back) and pastes
@@ -88,7 +98,8 @@ right-click opens the menu:
 - **About** - version, author, link to star the project
 - **Quit**
 
-Language and icon-style changes apply immediately; hotkey changes need a restart.
+Language and icon-style changes apply immediately; hotkey and behavior changes need a
+restart.
 
 ## Install (GNOME Wayland / Ubuntu)
 
@@ -171,11 +182,19 @@ Point `layouts.custom_maps_dir` at a folder and drop JSON files into it:
 
 - **Direction** is detected from the text. Pressed on correct text by mistake? Undo
   with `Ctrl+Z` in the app - the paste is a single edit.
-- **Non-text clipboard** (image / files) cannot be restored; it is cleared after the
-  operation. Text is restored as it was.
+- **Clipboard restore:** text is restored as it was. A non-text clipboard (an image,
+  for example) is restored as its first non-text type only; other types and hints such
+  as the password-manager "secret" flag are lost. Content above 20 MB is not restored.
+- **Clipboard history managers** (Clipboard Indicator, GPaste, CopyQ) record the
+  intermediate values WordWrap puts on the clipboard: a private marker, the selected
+  text and the converted text. Exclude WordWrap there or use their private mode if the
+  selected text can be sensitive.
 - **Password fields:** window / process detection is not available on GNOME Wayland,
-  so the excluded-programs list is best-effort only. Do not press the hotkey in a
+  so the excluded-programs list works only on X11. Do not press the hotkey in a
   password field.
+- **Layout switching** relies on the GNOME *switch input source* shortcut. If the
+  layout does not follow, the log has a `sgk_layout_switch_failed` warning with what
+  was read back.
 - **Active layouts** come from the system (`gsettings`), not from the config.
 - **Supported environment:** GNOME on Wayland (Ubuntu, Mutter). X11 / KDE / wlroots
   code exists in the tree but is out of scope for this release.

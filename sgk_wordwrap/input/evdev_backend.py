@@ -12,10 +12,11 @@ import glob
 import os
 import select
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable
 
-from sgk_wordwrap.input.base import SgkInputBackend
+from sgk_wordwrap.input.base import SGK_VIRTUAL_DEVICE_NAME, SgkInputBackend
 from sgk_wordwrap.utils.logger import sgk_get_logger
 
 _logger = sgk_get_logger(__name__)
@@ -27,6 +28,8 @@ _SGK_MODIFIER_KEY_NAMES: dict[str, list[str]] = {
     "alt":   ["KEY_LEFTALT", "KEY_RIGHTALT"],
     "super": ["KEY_LEFTMETA", "KEY_RIGHTMETA"],
 }
+
+_SGK_RESCAN_S = 2.0
 
 _SGK_MODIFIER_ALIASES: dict[str, str] = {
     "control": "ctrl",
@@ -56,6 +59,10 @@ def _sgk_parse_hotkey(hotkey_str: str) -> tuple[frozenset[str], str]:
         for p in parts[:-1]
     }
     return frozenset(mods), key
+
+
+def sgk_parse_hotkey(hotkey_str: str) -> tuple[frozenset[str], str]:
+    return _sgk_parse_hotkey(hotkey_str)
 
 
 def sgk_hotkey_is_valid(hotkey_str: str) -> bool:
@@ -104,7 +111,8 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
         self._thread: threading.Thread | None = None
         self._running = False
         self._stop_pipe: tuple[int, int] | None = None
-        self._pressed_mods: set[str] = set()
+        self._pressed_codes: set[int] = set()
+        self._mod_code_to_name: dict[int, str] = {}
 
     # -- SgkInputBackend ------------------------------------------------
 
@@ -129,7 +137,7 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
         return len(kbds) > 0
 
     def sgk_modifiers_held(self) -> bool:
-        return bool(self._pressed_mods)
+        return bool(self._pressed_codes)
 
     def sgk_start(self, on_hotkey: Callable[[str], None]) -> None:
         self._callback = on_hotkey
@@ -165,27 +173,39 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
     # -- internals ----------------------------------------------------
 
     def _sgk_find_keyboards(self) -> list:
-        import evdev
-
         keyboards = []
         for path in sorted(glob.glob("/dev/input/event*")):
-            try:
-                dev = evdev.InputDevice(path)
-                caps = dev.capabilities()
-                if (
-                    evdev.ecodes.EV_KEY in caps
-                    and evdev.ecodes.KEY_A in caps[evdev.ecodes.EV_KEY]
-                ):
-                    keyboards.append(dev)
-                else:
-                    dev.close()
-            except (PermissionError, OSError):
-                continue
-            except Exception as exc:
-                _logger.debug(
-                    "sgk_evdev_device_skip", extra={"path": path, "error": str(exc)}
-                )
+            dev = self._sgk_open_keyboard(path)
+            if dev is not None:
+                keyboards.append(dev)
         return keyboards
+
+    @staticmethod
+    def _sgk_open_keyboard(path: str):
+        import evdev
+
+        try:
+            dev = evdev.InputDevice(path)
+        except (PermissionError, OSError):
+            return None
+        except Exception as exc:
+            _logger.debug("sgk_evdev_device_skip", extra={"path": path, "error": str(exc)})
+            return None
+        try:
+            caps = dev.capabilities()
+            if (
+                getattr(dev, "name", "") != SGK_VIRTUAL_DEVICE_NAME
+                and evdev.ecodes.EV_KEY in caps
+                and evdev.ecodes.KEY_A in caps[evdev.ecodes.EV_KEY]
+            ):
+                return dev
+        except Exception as exc:
+            _logger.debug("sgk_evdev_device_skip", extra={"path": path, "error": str(exc)})
+        try:
+            dev.close()
+        except Exception:
+            pass
+        return None
 
     def _sgk_build_code_maps(self, evdev):
         """Build keycode→modifier-name and trigger-name→keycode lookups."""
@@ -208,11 +228,12 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
         return mod_code_to_name, trigger_codes
 
     def _sgk_run_loop(self) -> None:
-        keyboards = []
+        fds: dict[int, object] = {}
         try:
             import evdev
 
             keyboards = self._sgk_find_keyboards()
+            fds = {dev.fd: dev for dev in keyboards}
             if not keyboards:
                 _logger.error("sgk_evdev_no_keyboards")
                 return
@@ -221,17 +242,20 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
             if not trigger_codes:
                 _logger.error("sgk_evdev_no_valid_hotkeys")
                 return
+            self._mod_code_to_name = mod_code_to_name
 
-            pressed_mods = self._pressed_mods
-            pressed_mods.clear()
+            pressed = self._pressed_codes
+            pressed.clear()
             stop_r = self._stop_pipe[0] if self._stop_pipe else None
-            fds: dict[int, object] = {dev.fd: dev for dev in keyboards}
-            if stop_r is not None:
-                fds[stop_r] = None
+            seen_paths = {
+                p for p in glob.glob("/dev/input/event*") if os.access(p, os.R_OK)
+            }
+            last_scan = time.monotonic()
 
             while self._running:
+                watch = list(fds.keys()) + ([stop_r] if stop_r is not None else [])
                 try:
-                    readable, _, _ = select.select(list(fds.keys()), [], [], 1.0)
+                    readable, _, _ = select.select(watch, [], [], 1.0)
                 except (ValueError, OSError):
                     break
 
@@ -241,50 +265,84 @@ class SgkEvdevHotkeyListener(SgkInputBackend):
                     dev = fds.get(fd)
                     if dev is None:
                         continue
-                    try:
-                        for event in dev.read():  # type: ignore[union-attr]
-                            if event.type != evdev.ecodes.EV_KEY:
-                                continue
-                            try:
-                                self._sgk_handle_key_event(
-                                    evdev, event, mod_code_to_name,
-                                    trigger_codes, pressed_mods,
-                                )
-                            except Exception as exc:
-                                # One bad event must not kill the listener.
-                                _logger.error(
-                                    "sgk_evdev_event_error", extra={"error": str(exc)}
-                                )
-                    except (OSError, BlockingIOError):
+                    if not self._sgk_read_device(
+                        evdev, dev, mod_code_to_name, trigger_codes, pressed
+                    ):
                         fds.pop(fd, None)
+                        seen_paths.discard(getattr(dev, "path", None))
+                        pressed.clear()
+                        self._sgk_close_device(dev)
+                        _logger.info(
+                            "sgk_evdev_keyboard_lost",
+                            extra={"path": getattr(dev, "path", None), "left": len(fds)},
+                        )
+
+                if time.monotonic() - last_scan >= _SGK_RESCAN_S:
+                    last_scan = time.monotonic()
+                    self._sgk_rescan(fds, seen_paths)
         except Exception as exc:
             _logger.error("sgk_evdev_loop_error", extra={"error": str(exc)})
         finally:
-            for dev in keyboards:
+            for dev in fds.values():
+                self._sgk_close_device(dev)
+
+    def _sgk_read_device(self, evdev, dev, mod_code_to_name, trigger_codes, pressed) -> bool:
+        try:
+            for event in dev.read():
+                if event.type != evdev.ecodes.EV_KEY:
+                    continue
                 try:
-                    dev.close()  # type: ignore[union-attr]
-                except Exception:
-                    pass
+                    self._sgk_handle_key_event(
+                        evdev, event, mod_code_to_name, trigger_codes, pressed,
+                    )
+                except Exception as exc:
+                    _logger.error("sgk_evdev_event_error", extra={"error": str(exc)})
+        except BlockingIOError:
+            return True
+        except OSError:
+            return False
+        return True
+
+    def _sgk_rescan(self, fds: dict[int, object], seen_paths: set) -> None:
+        current = set(glob.glob("/dev/input/event*"))
+        open_paths = {getattr(d, "path", None) for d in fds.values()}
+        seen_paths.intersection_update(current)
+        for path in sorted(current - seen_paths):
+            if path in open_paths:
+                seen_paths.add(path)
+                continue
+            if not os.access(path, os.R_OK):
+                continue
+            seen_paths.add(path)
+            dev = self._sgk_open_keyboard(path)
+            if dev is not None:
+                fds[dev.fd] = dev
+                _logger.info("sgk_evdev_keyboard_added", extra={"path": path})
+
+    @staticmethod
+    def _sgk_close_device(dev) -> None:
+        try:
+            dev.close()
+        except Exception:
+            pass
 
     def _sgk_handle_key_event(
-        self, evdev, event, mod_code_to_name, trigger_codes, pressed_mods
+        self, evdev, event, mod_code_to_name, trigger_codes, pressed_codes
     ) -> None:
         key_event = evdev.categorize(event)
         keycode = key_event.scancode
         state = key_event.keystate
 
         if keycode in mod_code_to_name:
-            mod_name = mod_code_to_name[keycode]
             if state == evdev.events.KeyEvent.key_down:
-                pressed_mods.add(mod_name)
+                pressed_codes.add(keycode)
             elif state == evdev.events.KeyEvent.key_up:
-                pressed_mods.discard(mod_name)
+                pressed_codes.discard(keycode)
             return
 
         if state == evdev.events.KeyEvent.key_down and keycode in trigger_codes:
-            name = _sgk_pick_hotkey(
-                set(pressed_mods), trigger_codes[keycode], self._specs
-            )
+            pressed_mods = {mod_code_to_name[c] for c in pressed_codes if c in mod_code_to_name}
+            name = _sgk_pick_hotkey(pressed_mods, trigger_codes[keycode], self._specs)
             if name and self._callback:
                 _logger.debug("sgk_hotkey_triggered_evdev", extra={"hotkey": name})
                 self._callback(name)

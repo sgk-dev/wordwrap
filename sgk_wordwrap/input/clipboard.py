@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import time
-from typing import Any
+from typing import Any, NamedTuple
 
 from sgk_wordwrap.input.uinput_backend import SgkUinputInjector
 from sgk_wordwrap.utils.display_server import sgk_detect_display_server
@@ -26,6 +26,18 @@ _RETRY_DELAY = 0.05
 _RETRIES = 2
 _VISIBLE_TIMEOUT_S = 0.8
 _VISIBLE_POLL_S = 0.02
+_BLOB_TIMEOUT_S = 2.0
+_BLOB_MAX_BYTES = 20 * 1024 * 1024
+_TEXT_TYPE_PREFIXES = ("text/",)
+_SKIP_TYPES = frozenset({
+    "UTF8_STRING", "STRING", "TEXT", "COMPOUND_TEXT", "TARGETS", "MULTIPLE",
+    "TIMESTAMP", "SAVE_TARGETS", "x-kde-passwordManagerHint",
+})
+
+
+class SgkClipboardBlob(NamedTuple):
+    mime: str
+    data: bytes
 
 
 class SgkClipboard:
@@ -96,6 +108,48 @@ class SgkClipboard:
                 else:
                     _logger.warning("sgk_clipboard_set_failed", extra={"error": str(exc)})
         return False
+
+    async def sgk_snapshot_non_text(self) -> SgkClipboardBlob | None:
+        if self._display != "wayland":
+            return None
+        try:
+            raw = await self._sgk_run_get(["wl-paste", "--list-types"])
+        except Exception as exc:
+            _logger.debug("sgk_clipboard_types_failed", extra={"error": repr(exc)})
+            return None
+        if not raw:
+            return None
+        mime = next(
+            (
+                t for t in (line.strip() for line in raw.splitlines())
+                if t and t not in _SKIP_TYPES and not t.startswith(_TEXT_TYPE_PREFIXES)
+            ),
+            None,
+        )
+        if mime is None:
+            return None
+        try:
+            data = await self._sgk_run_get_bytes(["wl-paste", "--type", mime], _BLOB_TIMEOUT_S)
+        except Exception as exc:
+            _logger.warning("sgk_clipboard_snapshot_failed", extra={"error": repr(exc)})
+            return None
+        if data is None:
+            return None
+        if len(data) > _BLOB_MAX_BYTES:
+            _logger.warning("sgk_clipboard_snapshot_too_big", extra={"size": len(data)})
+            return None
+        _logger.debug("sgk_clipboard_snapshot", extra={"mime": mime, "size": len(data)})
+        return SgkClipboardBlob(mime, data)
+
+    async def sgk_set_blob(self, blob: SgkClipboardBlob) -> bool:
+        try:
+            await self._sgk_run_set_bytes(
+                ["wl-copy", "--type", blob.mime], blob.data, _BLOB_TIMEOUT_S
+            )
+            return True
+        except Exception as exc:
+            _logger.warning("sgk_clipboard_blob_restore_failed", extra={"error": repr(exc)})
+            return False
 
     async def sgk_clear(self) -> None:
         await self._sgk_clear(primary=False)
@@ -195,6 +249,20 @@ class SgkClipboard:
             _logger.warning("sgk_send_key_failed", extra={"combo": combo, "error": str(exc)})
         await asyncio.sleep(self._delay)
 
+    async def sgk_send_key_repeat(self, combo: str, count: int) -> None:
+        if count <= 1 or self._display != "wayland" or not (
+            self._uinput and self._uinput.sgk_is_available()
+        ):
+            for _ in range(max(1, count)):
+                await self.sgk_send_key(combo)
+            return
+        await asyncio.sleep(self._delay)
+        try:
+            self._uinput.sgk_send_combo_repeat(combo, count)
+        except Exception as exc:
+            _logger.warning("sgk_send_key_failed", extra={"combo": combo, "error": str(exc)})
+        await asyncio.sleep(self._delay)
+
     async def _sgk_send_key_x11(self, combo: str) -> None:
         proc = await asyncio.create_subprocess_exec(
             "xdotool", "key", "--clearmodifiers", combo,
@@ -290,27 +358,50 @@ class SgkClipboard:
             await asyncio.sleep(_VISIBLE_POLL_S)
 
     async def _sgk_run_get(self, cmd: list[str]) -> str | None:
+        data = await self._sgk_run_get_bytes(cmd, _CLIPBOARD_TIMEOUT)
+        if data is None:
+            return None
+        return data.decode("utf-8", errors="replace")
+
+    async def _sgk_run_get_bytes(self, cmd: list[str], timeout: float) -> bytes | None:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=_CLIPBOARD_TIMEOUT)
+        stdout = await self._sgk_communicate(proc, None, timeout)
         if proc.returncode != 0:
             return None
-        return stdout.decode("utf-8", errors="replace")
+        return stdout
 
     async def _sgk_run_set(self, cmd: list[str], text: str) -> None:
+        await self._sgk_run_set_bytes(cmd, text.encode("utf-8"), _CLIPBOARD_TIMEOUT)
+
+    async def _sgk_run_set_bytes(self, cmd: list[str], data: bytes, timeout: float) -> None:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        await asyncio.wait_for(
-            proc.communicate(text.encode("utf-8")),
-            timeout=_CLIPBOARD_TIMEOUT,
-        )
+        await self._sgk_communicate(proc, data, timeout)
+        if proc.returncode:
+            _logger.warning(
+                "sgk_clipboard_cmd_failed", extra={"cmd": cmd[0], "rc": proc.returncode}
+            )
+
+    @staticmethod
+    async def _sgk_communicate(proc, data: bytes | None, timeout: float) -> bytes:
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(data), timeout=timeout)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            await proc.wait()
+            raise
+        return stdout
 
     @staticmethod
     def sgk_is_text_safe(content: Any, max_length: int = 10000) -> bool:

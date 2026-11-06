@@ -62,8 +62,22 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "cfg.hotkey.toggle": {"en": "Enable / disable:", "ru": "Включить / выключить:"},
     "cfg.hotkey.note": {
-        "en": "Hotkey changes apply after restart.",
-        "ru": "Изменения горячих клавиш применяются после перезапуска.",
+        "en": "Hotkey and behavior changes apply after restart.",
+        "ru": "Изменения горячих клавиш и поведения применяются после перезапуска.",
+    },
+    "cfg.hotkey.duplicate": {
+        "en": "{field}: \"{value}\" is already used for \"{other}\". "
+              "Each action needs its own hotkey.",
+        "ru": "{field}: \"{value}\" уже используется для \"{other}\". "
+              "У каждого действия должна быть своя горячая клавиша.",
+    },
+    "cfg.hotkey.switch_clash": {
+        "en": "{field}: \"{value}\" is the GNOME shortcut for switching the input source. "
+              "WordWrap presses it itself to change the layout, so this hotkey will also "
+              "switch the layout. Save anyway?",
+        "ru": "{field}: \"{value}\" - это сочетание GNOME для переключения раскладки. "
+              "WordWrap сам нажимает его, чтобы сменить раскладку, поэтому эта клавиша "
+              "тоже будет переключать раскладку. Всё равно сохранить?",
     },
     "cfg.hotkey.invalid": {
         "en": "{field}: \"{value}\" is not a valid hotkey. It needs one regular key, "
@@ -74,8 +88,12 @@ _STRINGS: dict[str, dict[str, str]] = {
               "Ctrl, Alt, Shift и Super сами по себе клавишей быть не могут.",
     },
     "cfg.bl.explain": {
-        "en": "Conversion is disabled in these programs (for example, password managers).",
-        "ru": "В этих программах конверсия отключена (например, менеджеры паролей).",
+        "en": "Conversion is disabled in these programs (for example, password managers). "
+              "This works only on X11: on GNOME Wayland the focused program cannot be "
+              "detected, so do not press the hotkey in password fields.",
+        "ru": "В этих программах конверсия отключена (например, менеджеры паролей). "
+              "Это работает только в X11: в GNOME на Wayland нельзя узнать, какая программа "
+              "в фокусе, поэтому не нажимайте горячую клавишу в полях паролей.",
     },
     "cfg.bl.processes": {"en": "Program names", "ru": "Имена программ"},
     "cfg.bl.hint": {
@@ -92,6 +110,15 @@ _STRINGS: dict[str, dict[str, str]] = {
     "cfg.beh.restore": {
         "en": "Restore clipboard after paste:",
         "ru": "Восстанавливать буфер обмена после вставки:",
+    },
+    "cfg.beh.history_note": {
+        "en": "Clipboard history managers (Clipboard Indicator, GPaste, CopyQ) record "
+              "the intermediate values WordWrap puts on the clipboard, including the "
+              "selected text. Exclude WordWrap there or use their private mode.",
+        "ru": "Менеджеры истории буфера обмена (Clipboard Indicator, GPaste, CopyQ) "
+              "запоминают промежуточные значения, которые WordWrap кладёт в буфер, "
+              "в том числе выделенный текст. Исключите WordWrap в них или включите "
+              "приватный режим.",
     },
     "cfg.beh.delay": {"en": "Action delay:", "ru": "Задержка действий:"},
     "cfg.beh.terminal_paste": {

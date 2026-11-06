@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Callable
 
+SGK_VIRTUAL_DEVICE_NAME = "SGK WordWrap Virtual Keyboard"
+
 
 class SgkInputBackend(ABC):
     """Backend-agnostic interface for global hotkey interception."""

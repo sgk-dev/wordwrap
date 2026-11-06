@@ -42,3 +42,36 @@ def test_no_em_dash_in_strings() -> None:
     for key, entry in _STRINGS.items():
         for lang, value in entry.items():
             assert "—" not in value, f"{key}/{lang} contains an em dash"
+
+
+def test_no_en_dash_in_strings() -> None:
+    for key, entry in _STRINGS.items():
+        for lang, value in entry.items():
+            assert "\u2013" not in value, f"{key}/{lang} contains an en dash"
+
+
+def test_placeholders_match_across_languages() -> None:
+    import string
+
+    def _fields(value: str) -> set[str]:
+        return {f for _, f, _, _ in string.Formatter().parse(value) if f}
+
+    for key, entry in _STRINGS.items():
+        assert _fields(entry["en"]) == _fields(entry["ru"]), key
+
+
+def test_every_key_used_in_gui_exists() -> None:
+    import pathlib
+    import re
+
+    import sgk_wordwrap.gui as gui
+
+    used: set[str] = set()
+    for path in pathlib.Path(gui.__file__).parent.glob("*.py"):
+        used |= set(re.findall(r"_tr\(\s*\"([a-z_.]+)\"", path.read_text(encoding="utf-8")))
+        used |= set(re.findall(r"sgk_tr\(\s*\"([a-z_.]+)\"", path.read_text(encoding="utf-8")))
+        used |= set(re.findall(r"\(\"(cfg\.hotkey\.[a-z_]+)\",", path.read_text(encoding="utf-8")))
+    for mode in ("line", "word", "backspace"):
+        used.add(f"cfg.beh.erase.{mode}")
+    missing = sorted(k for k in used if k not in _STRINGS)
+    assert not missing, missing

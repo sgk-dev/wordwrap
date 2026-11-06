@@ -64,6 +64,12 @@ def _sgk_parse_gsettings_sources(raw: str) -> list[str]:
     return result
 
 
+def _sgk_parse_ibus_engine(raw: str) -> str | None:
+    parts = raw.strip().split(":")
+    if len(parts) >= 2 and parts[0] == "xkb" and parts[1]:
+        return parts[1]
+    return None
+
 
 class _SgkLayoutBackend(Protocol):
     def get_current(self) -> str: ...
@@ -164,7 +170,7 @@ class _SgkGsettings:
             text=True, timeout=1.0,
         )
 
-    def get_current(self) -> str:
+    def get_mru_current(self) -> str:
         try:
             mru = _sgk_parse_gsettings_sources(self._get("mru-sources"))
             if mru:
@@ -180,6 +186,39 @@ class _SgkGsettings:
             pass
         return "en"
 
+    def get_mru(self) -> list[str]:
+        try:
+            return _sgk_parse_gsettings_sources(self._get("mru-sources"))
+        except Exception:
+            return []
+
+    def sgk_per_window(self) -> bool:
+        try:
+            return self._get("per-window").strip() == "true"
+        except Exception:
+            return False
+
+    def sgk_get_live(self) -> str | None:
+        try:
+            proc = subprocess.run(
+                ["ibus", "engine"], capture_output=True, text=True, timeout=0.5,
+            )
+        except Exception:
+            return None
+        if proc.returncode != 0:
+            return None
+        layout = _sgk_parse_ibus_engine(proc.stdout)
+        if layout is None or layout not in self.get_all():
+            return None
+        return layout
+
+    def get_current(self) -> str:
+        if self.sgk_per_window():
+            live = self.sgk_get_live()
+            if live is not None:
+                return live
+        return self.get_mru_current()
+
     def get_all(self) -> list[str]:
         try:
             parsed = _sgk_parse_gsettings_sources(self._get("sources"))
@@ -189,29 +228,11 @@ class _SgkGsettings:
             pass
         return ["en"]
 
-    def _set_current(self, idx: int) -> None:
-        subprocess.run(
-            ["gsettings", "set", "org.gnome.desktop.input-sources",
-             "current", str(idx)],
-            timeout=1.0,
-        )
-
     def switch_next(self) -> None:
-        all_layouts = self.get_all()
-        if not all_layouts:
-            return
-        current = self.get_current()
-        idx = all_layouts.index(current) if current in all_layouts else 0
-        self._set_current((idx + 1) % len(all_layouts))
+        return None
 
     def switch_to(self, layout: str) -> None:
-        # The caller passes canonical names ("en"); the OS list uses raw names
-        # ("us"). Match on the normalized form.
-        target = _sgk_normalize(layout)
-        for idx, name in enumerate(self.get_all()):
-            if _sgk_normalize(name) == target:
-                self._set_current(idx)
-                return
+        return None
 
 
 class SgkLayoutManager:
@@ -299,6 +320,36 @@ class SgkLayoutManager:
                 extra={"layout": layout, "error": str(exc)},
             )
 
+    def sgk_uses_shortcut_switch(self) -> bool:
+        return isinstance(self._backend, _SgkGsettings)
+
+    def sgk_per_window(self) -> bool:
+        backend = self._backend
+        return isinstance(backend, _SgkGsettings) and backend.sgk_per_window()
+
+    def sgk_get_live_layout(self) -> str | None:
+        backend = self._backend
+        if not isinstance(backend, _SgkGsettings):
+            return None
+        live = backend.sgk_get_live()
+        return _sgk_normalize(live) if live else None
+
+    def sgk_get_mru_layouts(self) -> list[str]:
+        backend = self._backend
+        if not isinstance(backend, _SgkGsettings):
+            return []
+        return [_sgk_normalize(x) for x in backend.get_mru()]
+
+    def sgk_get_mru_layout(self) -> str:
+        backend = self._backend
+        try:
+            if isinstance(backend, _SgkGsettings):
+                return _sgk_normalize(backend.get_mru_current())
+            return _sgk_normalize(backend.get_current())
+        except Exception as exc:
+            _logger.warning("sgk_get_layout_failed", extra={"error": str(exc)})
+            return "en"
+
     def sgk_get_next_layout(self) -> str:
         """Return the name of the next layout without switching."""
         layouts = self.sgk_get_active_layouts()
@@ -319,23 +370,27 @@ class SgkLayoutManager:
         (default ``['<Super>space']``). Used as a uinput fallback when
         ``gsettings set ... current`` does not take effect in the live session.
         """
-        try:
-            raw = subprocess.check_output(
-                ["gsettings", "get", "org.gnome.desktop.wm.keybindings",
-                 "switch-input-source"],
-                text=True, timeout=1.0,
-            )
-            parsed = ast.literal_eval(raw.strip())
-            if isinstance(parsed, (list, tuple)) and parsed:
-                combo = str(parsed[0]).replace("<", "+").replace(">", "+")
-                alias = {"primary": "ctrl", "control": "ctrl", "meta": "super",
-                         "logo": "super", "hyper": "super"}
-                parts = [
-                    alias.get(p.strip().lower(), p.strip().lower())
-                    for p in combo.split("+") if p.strip()
-                ]
-                if parts:
-                    return "+".join(parts)
-        except Exception as exc:
-            _logger.debug("sgk_switch_shortcut_read_failed", extra={"error": str(exc)})
-        return "super+space"
+        return sgk_read_switch_shortcut()
+
+
+def sgk_read_switch_shortcut() -> str:
+    try:
+        raw = subprocess.check_output(
+            ["gsettings", "get", "org.gnome.desktop.wm.keybindings",
+             "switch-input-source"],
+            text=True, timeout=1.0,
+        )
+        parsed = ast.literal_eval(raw.strip())
+        if isinstance(parsed, (list, tuple)) and parsed:
+            combo = str(parsed[0]).replace("<", "+").replace(">", "+")
+            alias = {"primary": "ctrl", "control": "ctrl", "meta": "super",
+                     "logo": "super", "hyper": "super"}
+            parts = [
+                alias.get(p.strip().lower(), p.strip().lower())
+                for p in combo.split("+") if p.strip()
+            ]
+            if parts:
+                return "+".join(parts)
+    except Exception as exc:
+        _logger.debug("sgk_switch_shortcut_read_failed", extra={"error": str(exc)})
+    return "super+space"

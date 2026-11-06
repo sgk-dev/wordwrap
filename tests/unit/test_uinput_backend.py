@@ -90,3 +90,47 @@ class TestClose:
         injector.sgk_close()
         assert fake.closed is True
         assert injector._ui is None
+
+
+class TestComboRepeat:
+    def test_holds_modifier_and_taps_key(self, injector: SgkUinputInjector) -> None:
+        injector.sgk_send_combo_repeat("super+space", 2)
+        assert injector._ui.key_events() == [
+            (ecodes.KEY_LEFTMETA, 1),
+            (ecodes.KEY_SPACE, 1),
+            (ecodes.KEY_SPACE, 0),
+            (ecodes.KEY_SPACE, 1),
+            (ecodes.KEY_SPACE, 0),
+            (ecodes.KEY_LEFTMETA, 0),
+        ]
+
+    def test_single_count_is_plain_combo(self, injector: SgkUinputInjector) -> None:
+        injector.sgk_send_combo_repeat("super+space", 1)
+        assert injector._ui.key_events() == [
+            (ecodes.KEY_LEFTMETA, 1),
+            (ecodes.KEY_SPACE, 1),
+            (ecodes.KEY_SPACE, 0),
+            (ecodes.KEY_LEFTMETA, 0),
+        ]
+
+    def test_modifier_released_on_error(self, injector: SgkUinputInjector) -> None:
+        fake = injector._ui
+        original = fake.write
+
+        def flaky(etype, code, value):
+            if code == ecodes.KEY_SPACE and value == 1:
+                raise OSError("device gone")
+            original(etype, code, value)
+
+        fake.write = flaky
+        with pytest.raises(OSError):
+            injector.sgk_send_combo_repeat("super+space", 3)
+        assert fake.key_events()[-1] == (ecodes.KEY_LEFTMETA, 0)
+
+    def test_unavailable_is_noop(self) -> None:
+        SgkUinputInjector(ui=None).sgk_send_combo_repeat("super+space", 3)
+
+    def test_default_device_name_is_shared_constant(self) -> None:
+        from sgk_wordwrap.input.base import SGK_VIRTUAL_DEVICE_NAME
+
+        assert SgkUinputInjector(ui=None)._name == SGK_VIRTUAL_DEVICE_NAME
